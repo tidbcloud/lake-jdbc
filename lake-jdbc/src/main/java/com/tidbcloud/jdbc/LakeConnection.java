@@ -1,0 +1,1225 @@
+package com.tidbcloud.jdbc;
+
+import com.tidbcloud.client.*;
+
+import static com.tidbcloud.client.JsonCodec.jsonCodec;
+import com.tidbcloud.jdbc.annotation.NotImplemented;
+import com.tidbcloud.jdbc.cloud.LakeCopyParams;
+import com.tidbcloud.jdbc.cloud.LakePresignClient;
+import com.tidbcloud.jdbc.cloud.LakePresignClientV1;
+import com.tidbcloud.jdbc.exception.LakeFailedToPingException;
+import com.tidbcloud.jdbc.exception.LakeSQLException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vdurmont.semver4j.Semver;
+import okhttp3.*;
+import okio.BufferedSink;
+import okio.Okio;
+import okio.Source;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.sql.Array;
+import java.sql.Blob;
+import java.sql.CallableStatement;
+import java.sql.Clob;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.NClob;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLClientInfoException;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.sql.SQLWarning;
+import java.sql.SQLXML;
+import java.sql.Savepoint;
+import java.sql.Statement;
+import java.sql.Struct;
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.logging.FileHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
+import java.util.zip.GZIPOutputStream;
+
+import static com.tidbcloud.client.ClientSettings.*;
+import static com.tidbcloud.client.LakeClientV1.MEDIA_TYPE_JSON;
+import static com.tidbcloud.client.LakeClientV1.USER_AGENT_VALUE;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static java.net.URI.create;
+import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+
+
+public class LakeConnection implements Connection, LakeConnectionExtension, FileTransferAPI, Consumer<LakeSession> {
+
+    private static final Logger logger = Logger.getLogger(LakeConnection.class.getPackage().getName());
+    private static final String STREAMING_LOAD_PATH = "/v1/streaming_load";
+    private static final String LOGIN_PATH = "/v1/session/login";
+    private static final String LOGOUT_PATH = "/v1/session/logout";
+    private static final String HEARTBEAT_PATH = "/v1/session/heartbeat";
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final JsonCodec<LakeSession> SESSION_JSON_CODEC = jsonCodec(LakeSession.class);
+
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicBoolean autoCommit = new AtomicBoolean(true);
+    private final URI httpUri;
+    private final AtomicReference<String> schema = new AtomicReference<>();
+    private final OkHttpClient httpClient;
+    private final ConcurrentHashMap<LakeStatement, Boolean> statements = new ConcurrentHashMap<>();
+    private final LakeDriverUri driverUri;
+    private final AtomicReference<LakeSession> session = new AtomicReference<>();
+
+    private String routeHint;
+    private final AtomicReference<String> lastNodeID = new AtomicReference<>();
+    private Semver serverVersion = null;
+    private Capability serverCapability = null;
+    private boolean presignDisabled;
+
+    private static volatile ExecutorService heartbeatScheduler = null;
+    private final HeartbeatManager heartbeatManager = new HeartbeatManager();
+
+    private void initializeFileHandler() {
+        if (this.debug()) {
+            File file = new File("lake-jdbc-debug.log");
+            if (!file.canWrite()) {
+                logger.warning("No write access to file: " + file.getAbsolutePath());
+                return;
+            }
+            try {
+                // 2GB，Integer.MAX_VALUE
+                System.setProperty("java.util.logging.FileHandler.limit", "2147483647");
+                System.setProperty("java.util.logging.FileHandler.count", "200");
+                // Enable log file reuse
+                System.setProperty("java.util.logging.FileHandler.append", "true");
+                FileHandler fileHandler= new FileHandler(file.getAbsolutePath(), Integer.parseInt(System.getProperty("java.util.logging.FileHandler.limit")),
+                        Integer.parseInt(System.getProperty("java.util.logging.FileHandler.count")), true);
+                fileHandler.setLevel(Level.ALL);
+                fileHandler.setFormatter(new SimpleFormatter());
+                logger.addHandler(fileHandler);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to create FileHandler", e);
+            }
+        }
+    }
+
+
+    LakeConnection(LakeDriverUri uri, OkHttpClient httpClient) throws SQLException {
+        requireNonNull(uri, "uri is null");
+        // only used for presign url on non-object storage, which mainly served for demo pupose.
+        // TODO: may also add query id and load balancing on the part.
+        this.httpUri = uri.getUri();
+        this.httpClient = httpClient;
+        this.driverUri = uri;
+        this.schema.set(uri.getDatabase());
+        this.routeHint = randRouteHint();
+        LakeSession session = new LakeSession.Builder().setDatabase(this.getSchema()).setSettings(uri.getSessionSettings()).build();
+        this.setSession(session);
+
+        initializeFileHandler();
+        this.login();
+        this.checkPresign();
+    }
+
+    Semver getServerVersion() {
+        return this.serverVersion;
+    }
+
+    Capability getServerCapability() {
+        return this.serverCapability;
+    }
+
+    private void login() throws SQLException {
+        RetryPolicy retryPolicy = new RetryPolicy(true, true);
+
+        HashMap<String, String> headers = new HashMap<>();
+        headers.put("Accept", "application/json");
+        headers.put("Content-Type", "application/json");
+        try {
+            LoginRequest req = new LoginRequest();
+            req.database = this.getSchema();
+            req.settings = this.driverUri.getSessionSettings();
+            String bodyString = objectMapper.writeValueAsString(req);
+            RequestBody requestBody= RequestBody.create(MEDIA_TYPE_JSON, bodyString);
+
+            RetryPolicy.ResponseWithBody response = requestHelper(LOGIN_PATH, "post", requestBody, headers, retryPolicy);
+            // old server do not support this API
+            if (response.response.code() != 400) {
+                String version = objectMapper.readTree(response.body).get("version").asText();
+                if (version != null) {
+                    this.serverVersion = new Semver(version);
+                    this.serverCapability = new Capability(this.serverVersion);
+                }
+            }
+        } catch(JsonProcessingException e){
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void checkPresign() {
+        String mode = this.driverUri.presignedUrlDisabled();
+        switch (mode.toLowerCase(Locale.US)) {
+            case "auto":
+                String host = this.httpUri.getHost();
+                if (host != null && (host.endsWith(".databend.com")
+                        || host.endsWith(".databend.cn")
+                        || host.endsWith(".tidbcloud.com"))) {
+                    this.presignDisabled = false;
+                } else {
+                    this.presignDisabled = true;
+                }
+                break;
+            case "detect":
+                try {
+                    PresignContext.newPresignContext(this, PresignContext.PresignMethod.UPLOAD, "~", ".lake-jdbc/check");
+                    this.presignDisabled = false;
+                } catch (Exception e) {
+                    logger.warning("presign mode off with error detected: " + e.getMessage());
+                    this.presignDisabled = true;
+                }
+                break;
+            case "true":
+                this.presignDisabled = true;
+                break;
+            case "false":
+                this.presignDisabled = false;
+                break;
+            default:
+                logger.warning("Unknown presigned_url_disabled value: " + mode + ", defaulting to auto");
+                this.presignDisabled = true;
+                break;
+        }
+        if (this.debug()) {
+            logger.info("presign disabled: " + this.presignDisabled + " (mode=" + mode + ", host=" + this.httpUri.getHost() + ")");
+        }
+    }
+
+    private static String randRouteHint() {
+        String charset = "abcdef0123456789";
+        Random rand = new Random();
+        StringBuilder sb = new StringBuilder(16);
+        for (int i = 0; i < 16; i++) {
+            sb.append(charset.charAt(rand.nextInt(charset.length())));
+        }
+        return sb.toString();
+    }
+
+    private static final char SPECIAL_CHAR = '#';
+
+    private static String uriRouteHint(String URI) {
+        // Encode the URI using Base64
+        String encodedUri = Base64.getEncoder().encodeToString(URI.getBytes());
+
+        // Append the special character
+        return encodedUri + SPECIAL_CHAR;
+    }
+
+    private static URI parseRouteHint(String routeHint) {
+        if (routeHint == null || routeHint.isEmpty()) {
+            return null;
+        }
+        try {
+            if (routeHint.charAt(routeHint.length() - 1) != SPECIAL_CHAR) {
+                return null;
+            }
+            // Remove the special character
+            String encodedUri = routeHint.substring(0, routeHint.length() - 1);
+
+            // Decode the Base64 string
+            byte[] decodedBytes = Base64.getDecoder().decode(encodedUri);
+            String decodedUri = new String(decodedBytes);
+
+            return create(decodedUri);
+        } catch (Exception e) {
+            logger.log(Level.FINE, "Failed to parse route hint: " + routeHint, e);
+            return null;
+        }
+    }
+
+
+    private static void checkResultSet(int resultSetType, int resultSetConcurrency)
+            throws SQLFeatureNotSupportedException {
+        if (resultSetType != ResultSet.TYPE_FORWARD_ONLY) {
+            throw new SQLFeatureNotSupportedException("Result set type must be TYPE_FORWARD_ONLY");
+        }
+        if (resultSetConcurrency != ResultSet.CONCUR_READ_ONLY) {
+            throw new SQLFeatureNotSupportedException("Result set concurrency must be CONCUR_READ_ONLY");
+        }
+    }
+
+    static String getCopyIntoSql(String database, LakeCopyParams params) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("COPY INTO ");
+        if (database != null) {
+            sb.append(database).append(".");
+        }
+        sb.append(params.getDatabaseTableName()).append(" ");
+        sb.append("FROM ");
+        sb.append(params.getLakeStage().toString());
+        sb.append(" ");
+        sb.append(params);
+        return sb.toString();
+    }
+
+    LakeSession getSession() {
+        return this.session.get();
+    }
+
+    private boolean inActiveTransaction() {
+        if (this.session.get() == null) {
+            return false;
+        }
+        return this.session.get().inActiveTransaction();
+    }
+
+    private void setSession(LakeSession session) {
+        if (session == null) {
+            return;
+        }
+        this.session.set(session);
+    }
+
+    private OkHttpClient getHttpClient() {
+        return httpClient;
+    }
+
+    @Override
+    public Statement createStatement()
+            throws SQLException {
+        return doCreateStatement();
+    }
+
+    private LakeStatement doCreateStatement() throws SQLException {
+        checkOpen();
+        LakeStatement statement = new LakeStatement(this, this::unregisterStatement);
+        registerStatement(statement);
+        return statement;
+    }
+
+    synchronized private void registerStatement(LakeStatement statement) {
+        checkState(statements.put(statement, true) == null, "Statement is already registered");
+    }
+
+    synchronized private void unregisterStatement(LakeStatement statement) {
+        checkNotNull(statements.remove(statement), "Statement is not registered");
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(String s)
+            throws SQLException {
+
+        return this.prepareStatement(s, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+    }
+
+    @Override
+    public CallableStatement prepareCall(String s)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("prepareCall");
+    }
+
+    @Override
+    public String nativeSQL(String sql)
+            throws SQLException {
+        checkOpen();
+        return sql;
+    }
+
+    private void checkOpen()
+            throws SQLException {
+        if (isClosed()) {
+            throw new SQLException("Connection is closed");
+        }
+    }
+
+    @Override
+    public void commit()
+            throws SQLException {
+        checkOpen();
+        try {
+            this.startQuery("commit");
+        } catch (SQLException e) {
+            throw new SQLException("Failed to commit", e);
+        }
+    }
+
+    @Override
+    public boolean getAutoCommit()
+            throws SQLException {
+        checkOpen();
+        return autoCommit.get();
+    }
+
+    @Override
+    public void setAutoCommit(boolean b)
+            throws SQLException {
+        this.session.get().setAutoCommit(b);
+        autoCommit.set(b);
+    }
+
+    @Override
+    public void rollback()
+            throws SQLException {
+        checkOpen();
+        try {
+            this.startQuery("rollback");
+        } catch (SQLException e) {
+            throw new SQLException("Failed to rollback", e);
+        }
+    }
+
+    @Override
+    public void close()
+            throws SQLException {
+        for (Statement stmt : statements.keySet()) {
+            stmt.close();
+        }
+        logout();
+    }
+
+    @Override
+    public boolean isClosed()
+            throws SQLException {
+        return closed.get();
+    }
+
+    @Override
+    public DatabaseMetaData getMetaData()
+            throws SQLException {
+        return new LakeDatabaseMetaData(this);
+    }
+
+    @Override
+    public boolean isReadOnly()
+            throws SQLException {
+        return false;
+    }
+
+    @Override
+    public void setReadOnly(boolean b)
+            throws SQLException {
+
+    }
+
+    @Override
+    public String getCatalog()
+            throws SQLException {
+        return null;
+    }
+
+    @Override
+    public void setCatalog(String s)
+            throws SQLException {
+
+    }
+
+    @Override
+    public int getTransactionIsolation()
+            throws SQLException {
+        return Connection.TRANSACTION_NONE;
+    }
+
+    @Override
+    public void setTransactionIsolation(int i)
+            throws SQLException {
+
+    }
+
+    @Override
+    public SQLWarning getWarnings()
+            throws SQLException {
+        return null;
+    }
+
+    @Override
+    public void clearWarnings()
+            throws SQLException {
+
+    }
+
+    @Override
+    public Statement createStatement(int resultSetType, int resultSetConcurrency)
+            throws SQLException {
+        checkResultSet(resultSetType, resultSetConcurrency);
+        return createStatement();
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(String s, int i, int i1)
+            throws SQLException {
+        LakePreparedStatement statement = new LakePreparedStatement(this, this::unregisterStatement, s);
+        registerStatement(statement);
+        return statement;
+    }
+
+    @Override
+    public CallableStatement prepareCall(String s, int i, int i1)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("prepareCall");
+    }
+
+    @Override
+    public Map<String, Class<?>> getTypeMap()
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("getTypeMap");
+    }
+
+    @Override
+    public void setTypeMap(Map<String, Class<?>> map)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("setTypeMap");
+    }
+    @Override
+    public int getHoldability() throws SQLException {
+        return 0;
+    }
+
+    @Override
+    @NotImplemented
+    public void setHoldability(int holdability) throws SQLException {
+        // No support for transaction
+    }
+
+    @Override
+    public Savepoint setSavepoint()
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("setSavepoint");
+    }
+
+    @Override
+    public Savepoint setSavepoint(String s)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("setSavepoint");
+    }
+
+    @Override
+    public void rollback(Savepoint savepoint)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("rollback");
+
+    }
+
+    @Override
+    public void releaseSavepoint(Savepoint savepoint)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("releaseSavepoint");
+
+    }
+
+    @Override
+    public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability)
+            throws SQLException {
+//        checkHoldability(resultSetHoldability);
+        return createStatement(resultSetType, resultSetConcurrency);
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability)
+            throws SQLException {
+//        checkHoldability(resultSetHoldability);
+        return prepareStatement(sql, resultSetType, resultSetConcurrency);
+    }
+
+    @Override
+    public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability)
+            throws SQLException {
+        return prepareCall(sql, resultSetType, resultSetConcurrency);
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(String s, int autoGeneratedKeys)
+            throws SQLException {
+        return prepareStatement(s);
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(String s, int[] ints)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("prepareStatement");
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(String s, String[] strings)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("prepareStatement");
+    }
+
+    @Override
+    public Clob createClob()
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("createClob");
+    }
+
+    @Override
+    public Blob createBlob()
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("createBlob");
+    }
+
+    @Override
+    public NClob createNClob()
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("createNClob");
+    }
+
+    @Override
+    public SQLXML createSQLXML()
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("createSQLXML");
+    }
+
+    @Override
+    public boolean isValid(int i)
+            throws SQLException {
+        return !isClosed();
+    }
+
+    @Override
+    public void setClientInfo(String s, String s1)
+            throws SQLClientInfoException {
+
+    }
+
+    @Override
+    public String getClientInfo(String s)
+            throws SQLException {
+        return null;
+    }
+
+    @Override
+    public Properties getClientInfo()
+            throws SQLException {
+        return null;
+    }
+
+    @Override
+    public void setClientInfo(Properties properties)
+            throws SQLClientInfoException {
+
+    }
+
+    @Override
+    public Array createArrayOf(String s, Object[] objects)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("createArrayOf");
+    }
+
+    @Override
+    public Struct createStruct(String s, Object[] objects)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException("createStruct");
+    }
+
+    @Override
+    public String getSchema()
+            throws SQLException {
+        checkOpen();
+        return schema.get();
+    }
+
+    @Override
+    public void setSchema(String schema)
+            throws SQLException {
+        checkOpen();
+        this.schema.set(schema);
+        this.startQuery("use " + schema);
+    }
+
+    @Override
+    public void abort(Executor executor)
+            throws SQLException {
+        close();
+    }
+
+    @Override
+    public void setNetworkTimeout(Executor executor, int i)
+            throws SQLException {
+
+    }
+
+    @Override
+    public int getNetworkTimeout()
+            throws SQLException {
+        return 0;
+    }
+
+    @Override
+    public <T> T unwrap(Class<T> aClass)
+            throws SQLException {
+        if (isWrapperFor(aClass)) {
+            return (T) this;
+        }
+        throw new SQLException("No wrapper for " + aClass);
+    }
+
+    @Override
+    public boolean isWrapperFor(Class<?> aClass)
+            throws SQLException {
+        return aClass.isInstance(this);
+    }
+
+    boolean presignedUrlDisabled() {
+        return this.presignDisabled;
+    }
+
+    boolean copyPurge() {
+        return this.driverUri.copyPurge();
+    }
+
+    String warehouse() {
+        return this.driverUri.getWarehouse();
+    }
+
+    Boolean strNullAsNull() {
+        return this.driverUri.getStrNullAsNull();
+    }
+
+    Boolean useVerify() {
+        return this.driverUri.getUseVerify();
+    }
+
+    Boolean debug() {
+        return this.driverUri.getDebug();
+    }
+
+    String tenant() {
+        return this.driverUri.getTenant();
+    }
+
+    String nullDisplay() {
+        return this.driverUri.nullDisplay();
+    }
+
+    String binaryFormat() {
+        return this.driverUri.binaryFormat();
+    }
+
+    PaginationOptions getPaginationOptions() {
+        PaginationOptions.Builder builder = PaginationOptions.builder();
+        builder.setWaitTimeSecs(this.driverUri.getWaitTimeSecs());
+        builder.setMaxRowsInBuffer(this.driverUri.getMaxRowsInBuffer());
+        builder.setMaxRowsPerPage(this.driverUri.getMaxRowsPerPage());
+        return builder.build();
+    }
+
+    public URI getURI() {
+        return this.httpUri;
+    }
+
+    private String buildUrlWithQueryRequest(ClientSettings settings, String querySql) {
+        QueryRequest req = QueryRequest.builder()
+                .setSession(settings.getSession())
+                .setStageAttachment(settings.getStageAttachment())
+                .setPaginationOptions(settings.getPaginationOptions())
+                .setSql(querySql)
+                .build();
+        String reqString = req.toString();
+        if (reqString == null || reqString.isEmpty()) {
+            throw new IllegalArgumentException("Invalid request: " + req);
+        }
+        return reqString;
+    }
+
+    void pingLakeClientV1() throws SQLException {
+        try (Statement statement = this.createStatement()) {
+            statement.execute("select 1");
+            ResultSet r = statement.getResultSet();
+            while (r.next()) {
+            }
+        } catch (SQLException e) {
+            throw new LakeFailedToPingException(String.format("failed to ping lake server: %s", e.getMessage()));
+        }
+    }
+    @Override
+    public void accept(LakeSession session) {
+        setSession(session);
+    }
+
+    private LakeClient startQueryInternal(String sql, StageAttachment attach) throws SQLException {
+        String queryId = UUID.randomUUID().toString().replace("-", "");
+        String candidateHost = selectHostForQuery(queryId);
+        // configure the client settings
+        ClientSettings.Builder sb = this.makeClientSettings(queryId, candidateHost);
+        if (attach != null) {
+            sb.setStageAttachment(attach);
+        }
+        ClientSettings settings = sb.build();
+        try {
+            return new LakeClientV1(httpClient, sql, settings, this, lastNodeID);
+        } catch (RuntimeException e) {
+            String message = e.getMessage() == null ? e.toString() : e.getMessage();
+            throw new LakeSQLException("Failed to start query: " + message, queryId, e);
+        }
+    }
+
+    private String selectHostForQuery(String queryId) {
+        String candidateHost = this.driverUri.getUri(queryId).toString();
+
+        if (!inActiveTransaction()) {
+            this.routeHint = uriRouteHint(candidateHost);
+        }
+
+        if (this.routeHint != null && !this.routeHint.isEmpty()) {
+            URI uri = parseRouteHint(this.routeHint);
+            if (uri != null) {
+                candidateHost = uri.toString();
+            }
+        }
+
+        return candidateHost;
+    }
+
+    LakeClient startQuery(String sql) throws SQLException {
+        return startQuery(sql, null);
+    }
+
+    LakeClient startQuery(String sql, StageAttachment attach) throws SQLException {
+        LakeClient client = startQueryInternal(sql, attach);
+        Long timeout = client.getResults().getResultTimeoutSecs();
+        if (timeout != null && timeout != 0) {
+            heartbeatManager.onStartQuery(timeout);
+        }
+        return client;
+    }
+
+    private ClientSettings.Builder makeClientSettings(String queryID, String host) {
+        PaginationOptions options = getPaginationOptions();
+        Map<String, String> additionalHeaders = setAdditionalHeaders();
+        additionalHeaders.put(X_Lake_Query_ID, queryID);
+        return new Builder().
+                setSession(this.session.get()).
+                setHost(host).
+                setQueryTimeoutSecs(this.driverUri.getQueryTimeout()).
+                setConnectionTimeout(this.driverUri.getConnectionTimeout()).
+                setSocketTimeout(this.driverUri.getSocketTimeout()).
+                setPaginationOptions(options).
+                setAdditionalHeaders(additionalHeaders);
+    }
+
+    private Map<String, String> setAdditionalHeaders() {
+        Map<String, String> additionalHeaders = new HashMap<>();
+
+        LakeSession session = this.getSession();
+        String warehouse = null;
+        if (session != null ) {
+            Map<String, String> settings = session.getSettings();
+            if (settings != null) {
+                warehouse = settings.get("warehouse");
+            }
+        }
+        if (warehouse == null && !this.driverUri.getWarehouse().isEmpty()) {
+            warehouse = this.driverUri.getWarehouse();
+        }
+        if (warehouse!=null) {
+            additionalHeaders.put(LakeWarehouseHeader, warehouse);
+        }
+
+        if (!this.driverUri.getTenant().isEmpty()) {
+            additionalHeaders.put(LakeTenantHeader, this.driverUri.getTenant());
+        }
+        if (!this.routeHint.isEmpty()) {
+            additionalHeaders.put(X_DATABEND_ROUTE_HINT, this.routeHint);
+        }
+        additionalHeaders.put("User-Agent", USER_AGENT_VALUE);
+        return additionalHeaders;
+    }
+
+    @Override
+    public void uploadStream(InputStream inputStream, String stageName, String destPrefix, String destFileName, long fileSize, boolean compressData)
+            throws SQLException {
+        uploadStream(stageName, destPrefix, inputStream, destFileName, fileSize, compressData);
+    }
+
+    /**
+     * Method to put data from a stream at a stage location. The data will be uploaded as one file. No
+     * splitting is done in this method.
+     *
+     * <p>Stream size must match the total size of data in the input stream unless compressData
+     * parameter is set to true.
+     *
+     * <p>caller is responsible for passing the correct size for the data in the stream and releasing
+     * the inputStream after the method is called.
+     *
+     * <p>Note this method is deprecated since streamSize is not required now. Keep the function
+     * signature for backward compatibility
+     *
+     * @param stageName stage name: e.g. ~ or table name or stage name
+     * @param destPrefix path prefix under which the data should be uploaded on the stage
+     * @param inputStream input stream from which the data will be uploaded
+     * @param destFileName destination file name to use
+     * @param fileSize data size in the stream
+     * @throws SQLException failed to put data from a stream at stage
+     */
+    @Override
+    public void uploadStream(String stageName, String destPrefix, InputStream inputStream, String destFileName, long fileSize, boolean compressData)
+            throws SQLException {
+        /*
+         remove / in the end of stage name
+         remove / in the beginning of destPrefix and end of destPrefix
+         */
+        String s;
+        if (stageName == null) {
+            s = "~";
+        } else {
+            s = stageName.replaceAll("/$", "");
+        }
+        String p = destPrefix.replaceAll("^/", "").replaceAll("/$", "");
+        String dest = p + "/" + destFileName;
+        try {
+            InputStream dataStream = inputStream;
+            if (compressData) {
+                // Wrap the input stream with a GZIPOutputStream for compression
+                ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteArrayOutputStream)) {
+                    byte[] buffer = new byte[1024];
+                    int len;
+                    while ((len = inputStream.read(buffer)) != -1) {
+                        gzipOutputStream.write(buffer, 0, len);
+                    }
+                }
+                dataStream = new ByteArrayInputStream(byteArrayOutputStream.toByteArray());
+                // Update the file size to the compressed size
+                fileSize = byteArrayOutputStream.size();
+            }
+            if (this.presignDisabled) {
+                LakePresignClient cli = new LakePresignClientV1(httpClient, this.httpUri.toString());
+                cli.presignUpload(null, dataStream, s, p + "/", destFileName, fileSize, true);
+            } else {
+//                logger.log(Level.FINE, "presign to @" + s + "/" + dest);
+                long presignStartTime = System.nanoTime();
+                PresignContext ctx = PresignContext.newPresignContext(this, PresignContext.PresignMethod.UPLOAD, s, dest);
+                long presignEndTime = System.nanoTime();
+                if (this.debug()) {
+                    logger.info("presign cost time: " + (presignEndTime - presignStartTime) / 1000000.0 + "ms");
+                }
+                Headers h = ctx.getHeaders();
+                String presignUrl = ctx.getUrl();
+                LakePresignClient cli = new LakePresignClientV1(new OkHttpClient(), this.httpUri.toString());
+                long uploadStartTime = System.nanoTime();
+                cli.presignUpload(null, dataStream, h, presignUrl, fileSize, true);
+                long uploadEndTime = System.nanoTime();
+                if (this.debug()) {
+                    logger.info("upload cost time: " + (uploadEndTime - uploadStartTime) / 1000000.0 + "ms");
+                }
+            }
+        } catch (RuntimeException | IOException e) {
+            logger.warning("failed to upload input stream, file size is:" + fileSize / 1024.0 + e.getMessage());
+            throw new SQLException(e);
+        }
+    }
+
+    @Override
+    public InputStream downloadStream(String stageName, String path)
+            throws SQLException {
+        String s = stageName.replaceAll("/$", "");
+        LakePresignClient cli = new LakePresignClientV1(httpClient, this.httpUri.toString());
+        try {
+            PresignContext ctx = PresignContext.newPresignContext(this, PresignContext.PresignMethod.DOWNLOAD, s, path);
+            Headers h = ctx.getHeaders();
+            String presignUrl = ctx.getUrl();
+            return cli.presignDownloadStream(h, presignUrl);
+        } catch (RuntimeException e) {
+            throw new SQLException(e);
+        }
+    }
+
+    @Override
+    public InputStream downloadStream(String stageName, String path, boolean decompress)
+            throws SQLException {
+        return downloadStream(stageName, path);
+    }
+
+    @Override
+    public void copyIntoTable(String database, String tableName, LakeCopyParams params)
+            throws SQLException {
+        LakeCopyParams p = params == null ? LakeCopyParams.builder().build() : params;
+        requireNonNull(p.getDatabaseTableName(), "tableName is null");
+        requireNonNull(p.getLakeStage(), "stage is null");
+        String sql = getCopyIntoSql(database, p);
+        Statement statement = this.createStatement();
+        statement.execute(sql);
+        ResultSet rs = statement.getResultSet();
+        while (rs.next()) {
+        }
+    }
+
+    @Override
+    public int loadStreamToTable(String sql, InputStream inputStream, long fileSize,  LoadMethod loadMethod) throws SQLException {
+        if (!this.serverCapability.streamingLoad()) {
+            throw new SQLException("please upgrade query server to >1.2.781 to use loadStreamToTable, current version=" + this.serverVersion);
+        }
+
+        if (!sql.contains("@_databend_load")) {
+            throw new SQLException("invalid sql: must contain @_databend_load when used in loadStreamToTable ");
+        }
+
+        if (loadMethod.equals(LoadMethod.STREAMING)) {
+            return streamingLoad(sql, inputStream, fileSize);
+        } else {
+            Instant now = Instant.now();
+            long nanoTimestamp = now.getEpochSecond() * 1_000_000_000 + now.getNano();
+            String fileName = String.valueOf(nanoTimestamp);
+            String location = "~/_databend_load/" + fileName;
+            sql = sql.replace("_databend_load", location);
+            uploadStream("~", "_databend_load", inputStream, fileName, fileSize, false);
+            Statement statement = this.createStatement();
+            statement.execute(sql);
+            ResultSet rs = statement.getResultSet();
+            while (rs.next()) {
+            }
+            return statement.getUpdateCount();
+        }
+    }
+
+    MultipartBody buildMultiPart(InputStream inputStream, long fileSize) {
+        RequestBody requestBody = new RequestBody() {
+            @Override
+            public MediaType contentType() {
+                return MediaType.parse("application/octet-stream");
+            }
+
+            @Override
+            public long contentLength() {
+                return fileSize;
+            }
+
+            @Override
+            public void writeTo(BufferedSink sink) throws IOException {
+                try (Source source = Okio.source(inputStream)) {
+                    sink.writeAll(source);
+                }
+            }
+        };
+        return new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                "upload",
+                "java.io.InputStream",
+                requestBody
+        ).build();
+    }
+
+    int streamingLoad(String sql, InputStream inputStream, long fileSize) throws SQLException {
+        RetryPolicy retryPolicy = new RetryPolicy(true, true);
+
+        try {
+            HashMap<String, String> headers = new HashMap<>();
+            LakeSession session = this.session.get();
+            if (session != null) {
+                String sessionString = objectMapper.writeValueAsString(session);
+                headers.put(LakeQueryContextHeader, sessionString);
+            }
+            headers.put(LakeSQLHeader, sql);
+            headers.put("Accept", "application/json");
+            RequestBody requestBody = buildMultiPart(inputStream, fileSize);
+            RetryPolicy.ResponseWithBody response = requestHelper(STREAMING_LOAD_PATH, "put", requestBody, headers, retryPolicy);
+            JsonNode json = objectMapper.readTree(response.body);
+            JsonNode error = json.get("error");
+            if (error != null) {
+                throw new SQLException("streaming load fail: code = " + error.get("code").asText() + ", message=" +  error.get("message").asText());
+            }
+            String base64 = response.response.headers().get(LakeQueryContextHeader);
+            if (base64 != null) {
+                byte[] bytes = Base64.getUrlDecoder().decode(base64);
+                String str = new String(bytes, StandardCharsets.UTF_8);
+                try {
+                    session = SESSION_JSON_CODEC.fromJson(str);
+                }   catch(Exception e) {
+                    throw new RuntimeException(e);
+                }
+                if (session != null) {
+                    this.session.set(session);
+                }
+            }
+            JsonNode stats = json.get("stats");
+            if (stats != null) {
+                int rows = stats.get("rows").asInt(-1);
+                if (rows != -1) {
+                    return  rows;
+                }
+            }
+            throw new SQLException("invalid response for " + STREAMING_LOAD_PATH + ": " + response.body);
+        } catch(JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    void logout() throws SQLException {
+        LakeSession session = this.session.get();
+        if (session == null || !session.getNeedKeepAlive()) {
+            return;
+        }
+        RetryPolicy retryPolicy = new RetryPolicy(false, false);
+        RequestBody body = RequestBody.create(MEDIA_TYPE_JSON, "{}");
+        requestHelper(LOGOUT_PATH, "post", body, new HashMap<>(), retryPolicy);
+    }
+
+
+    HttpUrl getUrl(String path) {
+        String host = this.driverUri.getUri().toString();
+        HttpUrl url = HttpUrl.get(host);
+        return url.newBuilder().encodedPath(path).build();
+    }
+
+    RetryPolicy.ResponseWithBody requestHelper(String path, String method, RequestBody body, Map<String, String> headers, RetryPolicy retryPolicy) throws SQLException {
+        LakeSession session = this.session.get();
+        HttpUrl url = getUrl(path);
+
+        Request.Builder builder = new Request.Builder().url(url);
+        this.setAdditionalHeaders().forEach(builder::addHeader);
+        if (headers != null) {
+            headers.forEach(builder::addHeader);
+        }
+        if (session.getNeedSticky()) {
+            builder.addHeader(ClientSettings.X_DATABEND_ROUTE_HINT, url.host());
+            String lastNodeID = this.lastNodeID.get();
+            if (lastNodeID != null) {
+                builder.addHeader(ClientSettings.X_DATABEND_STICKY_NODE, lastNodeID);
+            }
+        }
+        if ("post".equals(method)) {
+            builder = builder.post(body);
+        } else if ("put".equals(method)) {
+            builder = builder.put(body);
+        } else {
+            builder = builder.get();
+        }
+        Request request = builder.build();
+        return retryPolicy.sendRequestWithRetry(this.httpClient, request);
+    }
+
+    class HeartbeatManager implements Runnable {
+        private ScheduledFuture<?> heartbeatFuture;
+        private long heartbeatIntervalMillis = 30000;
+        private long lastHeartbeatStartTimeMillis = 0;
+        private ScheduledExecutorService getScheduler() {
+            if (heartbeatScheduler == null) {
+                synchronized (HeartbeatManager.class) {
+                    if (heartbeatScheduler == null) {
+                        // create daemon thread so that it will not block JVM from exiting.
+                        heartbeatScheduler =
+                                Executors.newScheduledThreadPool(
+                                        1,
+                                        runnable -> {
+                                            Thread thread = Executors.defaultThreadFactory().newThread(runnable);
+                                            thread.setName("heartbeat (" + thread.getId() + ")");
+                                            thread.setDaemon(true);
+                                            return thread;
+                                        });
+                    }
+                }
+            }
+            return (ScheduledExecutorService) heartbeatScheduler;
+        }
+
+        private void scheduleHeartbeat() {
+            long delay =  Math.max(heartbeatIntervalMillis - (System.currentTimeMillis() - lastHeartbeatStartTimeMillis), 0);
+            heartbeatFuture = getScheduler().schedule(this, delay, MILLISECONDS);
+        }
+
+        private ArrayList<QueryLiveness> queryLiveness() {
+            ArrayList<QueryLiveness> arr = new ArrayList<>();
+            for (LakeStatement stmt : statements.keySet()) {
+                QueryLiveness ql = stmt.queryLiveness();
+                if (ql != null && !ql.stopped && ql.serverSupportHeartBeat) {
+                    arr.add(ql);
+                }
+            }
+            return arr;
+        }
+
+        private void doHeartbeat(ArrayList<QueryLiveness> queryLivenesses ) {
+            long now = System.currentTimeMillis();
+            lastHeartbeatStartTimeMillis = now;
+            Map<String, ArrayList<String>> nodeToQueryID = new HashMap<>();
+            Map<String, QueryLiveness> queries = new HashMap<>();
+
+            for (QueryLiveness ql: queryLivenesses) {
+                if (now - ql.lastRequestTime.get() >= ql.resultTimeoutSecs * 1000 / 2) {
+                    nodeToQueryID.computeIfAbsent(ql.nodeID, k -> new ArrayList<>()).add(ql.queryID);
+                    queries.put(ql.queryID, ql);
+                }
+            }
+            if (nodeToQueryID.isEmpty()) {
+                return;
+            }
+
+            Map<String, Object> map = new HashMap<>();
+            map.put("node_to_queries", nodeToQueryID);
+
+            try {
+                String body = objectMapper.writeValueAsString(map);
+                RequestBody requestBody = RequestBody.create(MEDIA_TYPE_JSON, body);
+                RetryPolicy retryPolicy = new RetryPolicy(true, false);
+                body = requestHelper(HEARTBEAT_PATH, "post", requestBody, null, retryPolicy).body;
+                JsonNode toRemove = objectMapper.readTree(body).get("queries_to_remove");
+                if (toRemove.isArray()) {
+                    for (JsonNode element : toRemove) {
+                        String queryId = element.asText();
+                        queries.get(queryId).stopped = true;
+                    }
+                }
+            } catch (JsonProcessingException e) {
+                logger.warning("fail to encode heartbeat body: " + e);
+            } catch (SQLException e) {
+                logger.warning("fail to send heartbeat: " + e);
+            } catch (Exception e) {
+                logger.warning("fail to send heartbeat: " + e);
+                throw new RuntimeException(e);
+            }
+        }
+
+        public void onStartQuery(Long timeoutSecs) {
+            synchronized (LakeConnection.this) {
+                if (timeoutSecs * 1000 / 4 < heartbeatIntervalMillis) {
+                    heartbeatIntervalMillis = timeoutSecs * 1000 / 4;
+                    if (heartbeatFuture != null) {
+                        heartbeatFuture.cancel(false);
+                        heartbeatFuture = null;
+                    }
+                }
+                if (heartbeatFuture == null) {
+                    scheduleHeartbeat();
+                }
+            }
+        }
+
+        @Override
+        public void run() {
+            ArrayList<QueryLiveness> arr = queryLiveness();
+            doHeartbeat(arr);
+
+            heartbeatFuture = null;
+            synchronized (LakeConnection.this) {
+                if (arr.size() > 0) {
+                    if (heartbeatFuture == null) {
+                        scheduleHeartbeat();
+                    }
+                } else {
+                    heartbeatFuture = null;
+                }
+            }
+        }
+    }
+
+    boolean isHeartbeatStopped() {
+        return heartbeatManager.heartbeatFuture == null;
+    }
+}

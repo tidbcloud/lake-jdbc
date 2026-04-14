@@ -1,0 +1,102 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.tidbcloud.client.data;
+
+import org.testng.Assert;
+import org.testng.annotations.Test;
+
+public class TestColumnTypeHandlerFactory
+{
+    @Test(groups = {"Unit"})
+    public void testGetTypeFunction() {
+        assertTypeHandler("Boolean", BooleanHandler.class, false);
+        assertTypeHandler("Nullable(Boolean)", BooleanHandler.class, true);
+        assertTypeHandler("UInt8", UInt8Handler.class, false);
+        assertTypeHandler("Nullable(Uint8)", UInt8Handler.class, true);
+        assertTypeHandler("UInt16", UInt16Handler.class, false);
+        assertTypeHandler("Nullable(Uint16)", UInt16Handler.class, true);
+        assertTypeHandler("UInt32", UInt32Handler.class, false);
+        assertTypeHandler("Nullable(Uint32)", UInt32Handler.class, true);
+        assertTypeHandler("UInt64", UInt64Handler.class, false);
+        assertTypeHandler("Nullable(Uint64)", UInt64Handler.class, true);
+        assertTypeHandler("Int8", Int8Handler.class, false);
+        assertTypeHandler("Nullable(Int8)", Int8Handler.class, true);
+        assertTypeHandler("Int16", Int16Handler.class, false);
+        assertTypeHandler("Nullable(Int16)", Int16Handler.class, true);
+        assertTypeHandler("Int32", Int32Handler.class, false);
+        assertTypeHandler("Nullable(Int32)", Int32Handler.class, true);
+        assertTypeHandler("Int64", Int64Handler.class, false);
+        assertTypeHandler("Nullable(Int64)", Int64Handler.class, true);
+        assertTypeHandler("Float32", Float32Handler.class, false);
+        assertTypeHandler("Nullable(Float32)", Float32Handler.class, true);
+        assertTypeHandler("Float64", Float64Handler.class, false);
+        assertTypeHandler("Nullable(Float64)", Float64Handler.class, true);
+        assertTypeHandler("String", StringHandler.class, false);
+        assertTypeHandler("Nullable(String)", StringHandler.class, true);
+        assertTypeHandler("Date", StringHandler.class, false);
+        assertTypeHandler("Nullable(Date)", StringHandler.class, true);
+        assertTypeHandler("DateTime", StringHandler.class, false);
+        assertTypeHandler("Nullable(DateTime)", StringHandler.class, true);
+        assertTypeHandler("DateTime64", StringHandler.class, false);
+        assertTypeHandler("Nullable(DateTime64)", StringHandler.class, true);
+        assertTypeHandler("Timestamp", StringHandler.class, false);
+        assertTypeHandler("Nullable(Timestamp)", StringHandler.class, true);
+        assertTypeHandler("Array(String)", StringHandler.class, false);
+        assertTypeHandler("Nullable(Array(Int32))", StringHandler.class, true);
+        assertTypeHandler("Struct", StringHandler.class, false);
+        assertTypeHandler("Nullable(Struct)", StringHandler.class, true);
+        assertTypeHandler("Null", StringHandler.class, false);
+        assertTypeHandler("Nullable(Null)", StringHandler.class, true);
+        assertTypeHandler("Variant", StringHandler.class, false);
+        assertTypeHandler("Nullable(Variant)", StringHandler.class, true);
+        assertTypeHandler("VariantArray", StringHandler.class, false);
+        assertTypeHandler("Nullable(VariantArray)", StringHandler.class, true);
+        assertTypeHandler("UUID", StringHandler.class, false);
+        assertTypeHandler("Nullable(UUID)", StringHandler.class, true);
+        assertTypeHandler("IPv4", StringHandler.class, false);
+        assertTypeHandler("Nullable(IPv4)", StringHandler.class, true);
+        assertTypeHandler("Geometry", GeometryHandler.class, false);
+        assertTypeHandler("Nullable(Geometry)", GeometryHandler.class, true);
+
+        // SQL-standard type aliases (returned by newer Lake versions)
+        assertTypeHandler("tinyint", Int8Handler.class, false);
+        assertTypeHandler("Nullable(tinyint)", Int8Handler.class, true);
+        assertTypeHandler("tinyint unsigned", UInt8Handler.class, false);
+        assertTypeHandler("smallint", Int16Handler.class, false);
+        assertTypeHandler("Nullable(smallint)", Int16Handler.class, true);
+        assertTypeHandler("smallint unsigned", UInt16Handler.class, false);
+        assertTypeHandler("integer", Int32Handler.class, false);
+        assertTypeHandler("Nullable(integer)", Int32Handler.class, true);
+        assertTypeHandler("integer unsigned", UInt32Handler.class, false);
+        assertTypeHandler("bigint", Int64Handler.class, false);
+        assertTypeHandler("Nullable(bigint)", Int64Handler.class, true);
+        assertTypeHandler("bigint unsigned", UInt64Handler.class, false);
+        assertTypeHandler("float", Float32Handler.class, false);
+        assertTypeHandler("Nullable(float)", Float32Handler.class, true);
+        assertTypeHandler("double", Float64Handler.class, false);
+        assertTypeHandler("Nullable(double)", Float64Handler.class, true);
+        assertTypeHandler("varchar", StringHandler.class, false);
+        assertTypeHandler("Nullable(varchar)", StringHandler.class, true);
+        assertTypeHandler("bool", BooleanHandler.class, false);
+        assertTypeHandler("Nullable(bool)", BooleanHandler.class, true);
+    }
+
+    private void assertTypeHandler(String typeStr, Class<?> clazz, boolean isNullable) {
+        LakeRawType type = new LakeRawType(typeStr);
+        Assert.assertEquals(ColumnTypeHandlerFactory.getTypeHandler(type).getClass(), clazz);
+        Assert.assertEquals(type.isNullable(), isNullable);
+    }
+
+}

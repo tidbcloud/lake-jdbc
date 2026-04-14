@@ -1,0 +1,12 @@
+# Checkstyle
+target/checkstyle-*
+.checkstyle
+.idea/
+lake-jdbc/lake-jdbc-debug.log
+target/
+/lake/
+.lake/
+tests/data
+tests/compatibility/*.jar
+test-output
+.DS_Store

@@ -1,0 +1,24 @@
+<suite name="LakeJdbcTests" verbose="10" parallel="none">
+  <test name="AllTests">
+    <groups>
+      <run>
+        <exclude name="FLAKY"/>
+        <include name="IT"/>
+      </run>
+    </groups>
+    <classes>
+      <class name="com.tidbcloud.jdbc.TestTypes"/>
+      <class name="com.tidbcloud.jdbc.TestBasicDriver"/>
+      <class name="com.tidbcloud.jdbc.TestLakeDatabaseMetaData"/>
+      <class name="com.tidbcloud.jdbc.TestLakeDriverUri"/>
+      <class name="com.tidbcloud.jdbc.TestLakeParameterMetaData"/>
+      <class name="com.tidbcloud.jdbc.TestFileTransfer"/>
+      <class name="com.tidbcloud.jdbc.TestGeometry"/>
+      <class name="com.tidbcloud.jdbc.TestHeartbeat"/>
+      <class name="com.tidbcloud.jdbc.TestPrepareStatement"/>
+      <class name="com.tidbcloud.jdbc.TestPresignContext"/>
+      <class name="com.tidbcloud.jdbc.TestTempTable"/>
+      <class name="com.tidbcloud.jdbc.TestTransaction"/>
+    </classes>
+  </test>
+</suite>
