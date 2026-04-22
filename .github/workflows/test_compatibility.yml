@@ -43,7 +43,7 @@ jobs:
           DATABEND_QUERY_VERSION: ${{ matrix.server }}
 
       - name: Build Test Jar
-        run: mvn clean package -DskipTests --batch-mode --no-transfer-progress
+        run: mvn clean install -DskipTests --batch-mode --no-transfer-progress
 
       - name: Run compatibility tests
         working-directory: tests/compatibility

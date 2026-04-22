@@ -20,14 +20,14 @@ if [ "$JDBC_VER" = "current" ]; then
 else
     DRIVER_JAR="$SCRIPT_DIR/lake-jdbc-${JDBC_VER}.jar"
     TESTS_JAR="$SCRIPT_DIR/lake-jdbc-${JDBC_VER}-tests.jar"
-    BASE="https://github.com/tidbcloud/lake-jdbc/releases/download/v${JDBC_VER}"
-    if [ -n "$GITHUB_TOKEN" ]; then
-        curl -sSLfo "$DRIVER_JAR" -H "Authorization: Bearer $GITHUB_TOKEN" "$BASE/lake-jdbc-${JDBC_VER}.jar"
-        curl -sSLfo "$TESTS_JAR"  -H "Authorization: Bearer $GITHUB_TOKEN" "$BASE/lake-jdbc-${JDBC_VER}-tests.jar"
-    else
-        curl -sSLfo "$DRIVER_JAR" "$BASE/lake-jdbc-${JDBC_VER}.jar"
-        curl -sSLfo "$TESTS_JAR"  "$BASE/lake-jdbc-${JDBC_VER}-tests.jar"
-    fi
+    # Use `gh release download` — works for both private and public repos
+    # when GITHUB_TOKEN / GH_TOKEN is set in the environment.
+    gh release download "v${JDBC_VER}" \
+        --repo tidbcloud/lake-jdbc \
+        --pattern "lake-jdbc-${JDBC_VER}.jar" \
+        --pattern "lake-jdbc-${JDBC_VER}-tests.jar" \
+        --dir "$SCRIPT_DIR" \
+        --clobber
 fi
 
 # Build the dependency classpath from the current pom.
