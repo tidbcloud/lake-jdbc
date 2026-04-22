@@ -29,6 +29,20 @@ jobs:
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
+      - name: Publish GPG public key to keyserver
+        continue-on-error: true
+        run: |
+          KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}')
+          if [ -z "$KEY_ID" ]; then
+            echo "No GPG secret key imported; skipping."
+            exit 0
+          fi
+          echo "Publishing public key $KEY_ID"
+          for server in keyserver.ubuntu.com keys.openpgp.org; do
+            echo "--> $server"
+            gpg --keyserver "hkps://$server" --send-keys "$KEY_ID" || echo "send to $server failed (non-fatal)"
+          done
+
       - name: Run Maven clean deploy with release profile
         run: mvn clean deploy -P release --batch-mode --no-transfer-progress
         env:
