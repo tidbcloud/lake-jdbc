@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,8 +21,11 @@ jobs:
           - "nightly"
           - "v1.2.889-nightly"
         driver:
-          - "0.4.1"
-          - "0.4.0"
+          # "current" = use the jar built in this workflow run.
+          # Add historical versions (e.g. "0.1.0") here after they are
+          # published to tidbcloud/lake-jdbc GitHub Releases.
+          - "current"
+          - "0.1.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +35,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           cache: 'maven'
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }} # Value of the GPG private key to import
-          gpg-passphrase: MAVEN_GPG_PASSPHRASE # env variable for GPG private key passphrase
 
       - name: Start Cluster With Nginx and Minio
         working-directory: tests
@@ -39,16 +43,14 @@ jobs:
           DATABEND_QUERY_VERSION: ${{ matrix.server }}
 
       - name: Build Test Jar
-        run: mvn clean package -DskipTests
-        env:
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn clean package -DskipTests --batch-mode --no-transfer-progress
 
-      - name: Test with conn to nginx
+      - name: Run compatibility tests
         working-directory: tests/compatibility
-        run: sh test_compatibility.sh
+        run: bash test_compatibility.sh
         env:
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           DATABEND_TEST_CONN_PORT: 8000
           DATABEND_QUERY_VERSION: ${{ matrix.server }}
           DATABEND_JDBC_VERSION: ${{ matrix.driver }}
           TEST_SIDE: "driver"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

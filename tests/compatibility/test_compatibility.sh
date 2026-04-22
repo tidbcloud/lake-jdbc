@@ -2,37 +2,46 @@
 
 set -ex
 
-curl -sSLfo ./testng.jar https://repo.maven.apache.org/maven2/org/testng/testng/7.11.0/testng-7.11.0.jar
-curl -sSLfo ./semver4j.jar https://repo1.maven.org/maven2/com/vdurmont/semver4j/3.1.0/semver4j-3.1.0.jar
-curl -sSLfo ./jcommander.jar https://repo1.maven.org/maven2/org/jcommander/jcommander/1.83/jcommander-1.83.jar
-curl -sSLfo ./jts-core.jar https://repo1.maven.org/maven2/org/locationtech/jts/jts-core/1.19.0/jts-core-1.19.0.jar
-curl -sSLfo ./slf4j-api.jar https://repo1.maven.org/maven2/org/slf4j/slf4j-api/2.0.16/slf4j-api-2.0.16.jar
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-original_dir=$(pwd)
-cd ../..
-# got 1 if not in java project
+cd "$PROJECT_ROOT"
 CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-cd "$original_dir"
 
-TEST_SIDE=${TEST_SIDE:-server}
-TEST_VER=${DATABEND_JDB_TEST_VERSION:-$CURRENT_VERSION}
-JDBC_VER=${DATABEND_JDBC_VERSION:-$CURRENT_VERSION}
+JDBC_VER=${DATABEND_JDBC_VERSION:-current}
 
-JDBC_JAR="databend-jdbc-${JDBC_VER}.jar"
-JDBC_TEST_JAR="databend-jdbc-${TEST_VER}-tests.jar"
-
-if [ "$TEST_SIDE" = "server" ]; then
-    curl -sSLfO "https://github.com/databendlabs/databend-jdbc/releases/download/v${TEST_VER}/${JDBC_TEST_JAR}"
+# Resolve driver jar + tests jar.
+# - "current": use artifacts produced by the in-run `mvn package` step.
+# - anything else (e.g. "0.1.0"): download from tidbcloud/lake-jdbc GitHub Release.
+#   Works for both private and public repos as long as $GITHUB_TOKEN is set.
+if [ "$JDBC_VER" = "current" ]; then
+    DRIVER_JAR="$PROJECT_ROOT/lake-jdbc/target/lake-jdbc-${CURRENT_VERSION}.jar"
+    TESTS_JAR="$PROJECT_ROOT/lake-jdbc/target/lake-jdbc-${CURRENT_VERSION}-tests.jar"
 else
-    cp "../../databend-jdbc/target/${JDBC_TEST_JAR}" .
+    DRIVER_JAR="$SCRIPT_DIR/lake-jdbc-${JDBC_VER}.jar"
+    TESTS_JAR="$SCRIPT_DIR/lake-jdbc-${JDBC_VER}-tests.jar"
+    BASE="https://github.com/tidbcloud/lake-jdbc/releases/download/v${JDBC_VER}"
+    if [ -n "$GITHUB_TOKEN" ]; then
+        curl -sSLfo "$DRIVER_JAR" -H "Authorization: Bearer $GITHUB_TOKEN" "$BASE/lake-jdbc-${JDBC_VER}.jar"
+        curl -sSLfo "$TESTS_JAR"  -H "Authorization: Bearer $GITHUB_TOKEN" "$BASE/lake-jdbc-${JDBC_VER}-tests.jar"
+    else
+        curl -sSLfo "$DRIVER_JAR" "$BASE/lake-jdbc-${JDBC_VER}.jar"
+        curl -sSLfo "$TESTS_JAR"  "$BASE/lake-jdbc-${JDBC_VER}-tests.jar"
+    fi
 fi
 
-if [ -z "DATABEND_JDBC_VERSION" ]; then
-    # test main branch
-    cp "../../databend-jdbc/target/${JDBC_JAR}" .
-else
-    curl -sSLfO "https://github.com/databendlabs/databend-jdbc/releases/download/v${JDBC_VER}/${JDBC_JAR}"
-fi
+# Build the dependency classpath from the current pom.
+# Includes test-scope deps (testng, jts-core) and runtime deps (okhttp, jackson, slf4j, ...).
+# The shaded driver jar relocates jackson/guava/slf4j/commons-lang3 internally,
+# but test classes reference the un-shaded packages — these come from here.
+cd "$PROJECT_ROOT"
+mvn -pl lake-jdbc -q \
+    dependency:build-classpath \
+    -Dmdep.outputFile=/tmp/lake-jdbc-cp.txt \
+    -DincludeScope=test
+DEPS_CP=$(cat /tmp/lake-jdbc-cp.txt)
 
-export DATABEND_JDBC_VERSION=$JDBC_VER
-java -Dlogback.logger.root=INFO -cp "testng.jar:slf4j-api.jar:${JDBC_JAR}:${JDBC_TEST_JAR}:jcommander.jar:semver4j.jar" org.testng.TestNG testng.xml
+cd "$SCRIPT_DIR"
+CLASSPATH="${DRIVER_JAR}:${TESTS_JAR}:${DEPS_CP}"
+
+java -Dlogback.logger.root=INFO -cp "$CLASSPATH" org.testng.TestNG testng.xml
