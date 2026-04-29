@@ -34,7 +34,7 @@ public class Compatibility {
 
     private static Semver getDriverVersion() {
         String env = System.getenv("DATABEND_JDBC_VERSION");
-        if (env == null) {
+        if (env == null || "current".equalsIgnoreCase(env)) {
             return null;
         }
         return new Semver(env);

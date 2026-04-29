@@ -41,5 +41,9 @@ else
     curl -sSLfO "https://github.com/databendlabs/lake-jdbc/releases/download/v${JDBC_VER}/${JDBC_JAR}"
 fi
 
-export DATABEND_JDBC_VERSION=$JDBC_VER
+if [ "$JDBC_VER" = "current" ]; then
+    export DATABEND_JDBC_VERSION=$CURRENT_VERSION
+else
+    export DATABEND_JDBC_VERSION=$JDBC_VER
+fi
 java -Dlogback.logger.root=INFO -cp "testng.jar:slf4j-api.jar:${JDBC_JAR}:${JDBC_TEST_JAR}:jcommander.jar:semver4j.jar" org.testng.TestNG testng.xml
