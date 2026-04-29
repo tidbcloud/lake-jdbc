@@ -22,10 +22,10 @@ jobs:
           - "v1.2.889-nightly"
         driver:
           # "current" = use the jar built in this workflow run.
-          # Add historical versions (e.g. "0.1.0") here after they are
+          # Add released versions (e.g. "0.4.6") here after they are
           # published to tidbcloud/lake-jdbc GitHub Releases.
           - "current"
-          - "0.1.0"
+          - "0.4.6"
     steps:
       - uses: actions/checkout@v4
 
