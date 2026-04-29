@@ -45,12 +45,20 @@ jobs:
 
       - name: Verify Service Running
         run: |
-          sleep 30
-          cid=$(docker ps -a | grep databend | cut -d' ' -f1)
-          docker logs ${cid}
-          curl -u databend:databend  --request POST localhost:8000/v1/query --header 'Content-Type:application/json' --data-raw '{"sql":"select 1"}'
+          for i in {1..30}; do
+            if curl -fsS -u databend:databend --request POST http://localhost:8000/v1/query --header 'Content-Type:application/json' --data-raw '{"sql":"select 1"}' >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cid=$(docker ps -a | awk '/databend/ {print $1; exit}')
+          if [ -n "${cid}" ]; then
+            docker logs "${cid}"
+          fi
+          exit 1
 
       - name: Run Maven clean deploy with release profile
         run: mvn test -DexcludedGroups=MULTI_HOST,FLAKY
         env:
+          DATABEND_JDBC_TEST_EXTRA_QUERY: presign=off
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

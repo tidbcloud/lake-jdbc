@@ -49,6 +49,7 @@ jobs:
         working-directory: tests/compatibility
         run: bash test_compatibility.sh
         env:
+          DATABEND_JDBC_TEST_EXTRA_QUERY: presign=off
           DATABEND_TEST_CONN_PORT: 8000
           DATABEND_QUERY_VERSION: ${{ matrix.server }}
           DATABEND_JDBC_VERSION: ${{ matrix.driver }}

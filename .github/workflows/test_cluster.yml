@@ -38,6 +38,7 @@ jobs:
       - name: Test with conn to nginx
         run: mvn test -DexcludedGroups=FLAKY
         env:
+          DATABEND_JDBC_TEST_EXTRA_QUERY: presign=off
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           DATABEND_TEST_CONN_PORT: 8000
           DATABEND_QUERY_VERSION: ${{ matrix.version }}

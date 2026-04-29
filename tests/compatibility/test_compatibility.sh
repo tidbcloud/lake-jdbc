@@ -2,6 +2,9 @@
 
 set -ex
 
+ARROW_JAVA_TOOL_OPTIONS="--add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true"
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:+$JAVA_TOOL_OPTIONS }${ARROW_JAVA_TOOL_OPTIONS}"
+
 curl -sSLfo ./testng.jar https://repo.maven.apache.org/maven2/org/testng/testng/7.11.0/testng-7.11.0.jar
 curl -sSLfo ./semver4j.jar https://repo1.maven.org/maven2/com/vdurmont/semver4j/3.1.0/semver4j-3.1.0.jar
 curl -sSLfo ./jcommander.jar https://repo1.maven.org/maven2/org/jcommander/jcommander/1.83/jcommander-1.83.jar
@@ -18,8 +21,12 @@ TEST_SIDE=${TEST_SIDE:-server}
 TEST_VER=${DATABEND_JDB_TEST_VERSION:-$CURRENT_VERSION}
 JDBC_VER=${DATABEND_JDBC_VERSION:-$CURRENT_VERSION}
 
-JDBC_JAR="lake-jdbc-${JDBC_VER}.jar"
 JDBC_TEST_JAR="lake-jdbc-${TEST_VER}-tests.jar"
+if [ "$JDBC_VER" = "current" ]; then
+    JDBC_JAR="lake-jdbc-${CURRENT_VERSION}.jar"
+else
+    JDBC_JAR="lake-jdbc-${JDBC_VER}.jar"
+fi
 
 if [ "$TEST_SIDE" = "server" ]; then
     curl -sSLfO "https://github.com/databendlabs/lake-jdbc/releases/download/v${TEST_VER}/${JDBC_TEST_JAR}"
@@ -27,8 +34,8 @@ else
     cp "../../lake-jdbc/target/${JDBC_TEST_JAR}" .
 fi
 
-if [ -z "DATABEND_JDBC_VERSION" ]; then
-    # test main branch
+if [ -z "${DATABEND_JDBC_VERSION:-}" ] || [ "$JDBC_VER" = "current" ]; then
+    # test the jar built in the current workflow run
     cp "../../lake-jdbc/target/${JDBC_JAR}" .
 else
     curl -sSLfO "https://github.com/databendlabs/lake-jdbc/releases/download/v${JDBC_VER}/${JDBC_JAR}"

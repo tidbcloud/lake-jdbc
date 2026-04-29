@@ -58,6 +58,7 @@
         <dep.testng.version>6.10</dep.testng.version>
         <plugin.gpg.version>3.1.0</plugin.gpg.version>
         <checkstyle.config.location>${maven.multiModuleProjectDirectory}/config/checkstyle/checkstyle.xml</checkstyle.config.location>
+        <test.java.argLine>--add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true</test.java.argLine>
     </properties>
 
     <modules>
@@ -220,6 +221,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
+                    <argLine>${test.java.argLine}</argLine>
                     <skipAfterFailureCount>1</skipAfterFailureCount>
                 </configuration>
             </plugin>
@@ -328,7 +330,6 @@
                         <artifactId>maven-surefire-plugin</artifactId>
                         <configuration>
                             <groups>UNIT_ARROW</groups>
-                            <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true</argLine>
                         </configuration>
                     </plugin>
                 </plugins>

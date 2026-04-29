@@ -4,6 +4,7 @@ import java.sql.*;
 import java.util.Properties;
 
 public class Utils {
+    private static final String TEST_EXTRA_QUERY = "DATABEND_JDBC_TEST_EXTRA_QUERY";
     private static final String TEST_QUERY_RESULT_FORMAT = "DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT";
 
     static String port = System.getenv("DATABEND_TEST_CONN_PORT") != null ? System.getenv("DATABEND_TEST_CONN_PORT").trim() : "8000";
@@ -50,8 +51,17 @@ public class Utils {
             url.append("/").append(database);
         }
         appendQueryParameter(url, testQueryResultFormat());
+        appendQueryParameter(url, testExtraQuery());
         appendQueryParameter(url, extraQuery);
         return url.toString();
+    }
+
+    private static String testExtraQuery() {
+        String query = System.getenv(TEST_EXTRA_QUERY);
+        if (query == null || query.trim().isEmpty()) {
+            return null;
+        }
+        return query.trim();
     }
 
     private static String testQueryResultFormat() {
