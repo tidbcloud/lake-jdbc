@@ -96,9 +96,13 @@ public class TestLakeDatabaseMetaData {
             DatabaseMetaData metaData = c.getMetaData();
             String url = metaData.getURL();
             String expected = "jdbc:lake://http://localhost:" + Utils.port;
+            String testExtraQuery = System.getenv("DATABEND_JDBC_TEST_EXTRA_QUERY");
             String queryResultFormat = System.getenv("DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT");
             if (queryResultFormat != null && !queryResultFormat.trim().isEmpty()) {
                 expected += "?query_result_format=" + queryResultFormat.trim().toLowerCase();
+            }
+            if (testExtraQuery != null && !testExtraQuery.trim().isEmpty()) {
+                expected += (expected.contains("?") ? "&" : "?") + testExtraQuery.trim();
             }
             Assert.assertEquals(url, expected);
         }
