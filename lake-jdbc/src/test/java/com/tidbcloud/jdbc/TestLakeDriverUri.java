@@ -1,6 +1,7 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.PaginationOptions;
+import com.tidbcloud.jdbc.internal.session.PaginationOptions;
+import com.tidbcloud.jdbc.internal.session.SessionHandleConfig;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -28,6 +29,13 @@ public class TestLakeDriverUri {
                 msg.startsWith(prefix),
                 "error message not start with " + prefix + ":" + msg
         );
+    }
+
+    private static void assertPaginationConfig(SessionHandleConfig config, int waitTimeSecs, int maxRowsInBuffer,
+                                               int maxRowsPerPage) {
+        Assert.assertEquals(config.getWaitTimeSecs().intValue(), waitTimeSecs);
+        Assert.assertEquals(config.getMaxRowsInBuffer().intValue(), maxRowsInBuffer);
+        Assert.assertEquals(config.getMaxRowsPerPage().intValue(), maxRowsPerPage);
     }
 
     @Test(groups = {"UNIT"})
@@ -149,11 +157,13 @@ public class TestLakeDriverUri {
         Assert.assertEquals(uri.getWaitTimeSecs().intValue(), PaginationOptions.getDefaultWaitTimeSec());
         Assert.assertEquals(uri.getMaxRowsInBuffer().intValue(), PaginationOptions.getDefaultMaxRowsInBuffer());
         Assert.assertEquals(uri.getMaxRowsPerPage().intValue(), PaginationOptions.getDefaultMaxRowsPerPage());
-        Assert.assertEquals("auto", uri.presignedUrlDisabled());
+        Assert.assertFalse(uri.presignedUrlDisabled().booleanValue());
         Assert.assertTrue(uri.copyPurge().booleanValue());
         Assert.assertEquals("\\N", uri.nullDisplay());
         Assert.assertEquals("base64", uri.binaryFormat());
         Assert.assertEquals("enable", uri.getSslmode());
+        assertPaginationConfig(uri.toSessionHandleConfig(), PaginationOptions.getDefaultWaitTimeSec(),
+                PaginationOptions.getDefaultMaxRowsInBuffer(), PaginationOptions.getDefaultMaxRowsPerPage());
     }
 
     @Test(groups = {"UNIT"})
@@ -175,9 +185,10 @@ public class TestLakeDriverUri {
         Assert.assertEquals(uri.getWaitTimeSecs().intValue(), 1);
         Assert.assertEquals(uri.getMaxRowsInBuffer().intValue(), 10);
         Assert.assertEquals(uri.getMaxRowsPerPage().intValue(), 5);
-        Assert.assertEquals("true", uri.presignedUrlDisabled());
+        Assert.assertTrue(uri.presignedUrlDisabled().booleanValue());
         Assert.assertTrue(uri.copyPurge().booleanValue());
         Assert.assertEquals("", uri.binaryFormat().toString());
+        assertPaginationConfig(uri.toSessionHandleConfig(), 1, 10, 5);
     }
 
     @Test(groups = {"UNIT"})
@@ -209,9 +220,46 @@ public class TestLakeDriverUri {
         Assert.assertEquals(uri.getWaitTimeSecs().intValue(), 9);
         Assert.assertEquals(uri.getMaxRowsInBuffer().intValue(), 11);
         Assert.assertEquals(uri.getMaxRowsPerPage().intValue(), 7);
-        Assert.assertEquals("false", uri.presignedUrlDisabled());
+        Assert.assertFalse(uri.presignedUrlDisabled().booleanValue());
         Assert.assertEquals("null", uri.nullDisplay().toString());
         Assert.assertFalse(uri.getStrNullAsNull());
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testQueryResultFormat() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://localhost:8000/default?query_result_format=arrow", null);
+        Assert.assertEquals(uri.getQueryResultFormat(), "arrow");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testQueryResultFormatNormalizesCase() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://localhost:8000/default?query_result_format=ARROW", null);
+        Assert.assertEquals(uri.getQueryResultFormat(), "arrow");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testInvalidQueryResultFormat() {
+        assertInvalid("jdbc:lake://localhost:8000/default?query_result_format=csv", "Connection property 'query_result_format' value is invalid: csv");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testSessionSettingsParsingIgnoresMalformedEntries() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://localhost:8000/default?session_settings=max_threads=4,timezone=UTC,malformed,enable_planner_v2=1",
+                null);
+
+        Map<String, String> expected = new HashMap<>();
+        expected.put("max_threads", "4");
+        expected.put("timezone", "UTC");
+        expected.put("enable_planner_v2", "1");
+        Assert.assertEquals(uri.getSessionSettings(), expected);
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testUrlUserPasswordEncodesReservedCharacters() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://user:p@ss:wo@rd@localhost:8000/default", null);
+        Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "p%40ss%3Awo%40rd");
     }
 
     @Test(groups = "IT")
@@ -226,12 +274,22 @@ public class TestLakeDriverUri {
     }
 
     @Test(groups = "IT")
+    public void TestSetSchemaFailureDoesNotUpdateLocalState() throws SQLException {
+        try (Connection connection = Utils.createConnection("default")) {
+            SQLException exception = Assert.expectThrows(SQLException.class,
+                    () -> connection.setSchema("test_schema_missing"));
+            Assert.assertNotNull(exception);
+            Assert.assertEquals(connection.getSchema(), "default");
+        }
+    }
+
+    @Test(groups = "IT")
     public void TestSetSessionSettings() throws SQLException {
         Properties props = new Properties();
         // set session settings
         props.setProperty("session_settings", "max_threads=1,query_tag=tag1");
-        props.setProperty("user", Utils.getUsername());
-        props.setProperty("password", Utils.getPassword());
+        props.setProperty("user", "databend");
+        props.setProperty("password", "databend");
         try (Connection connection = Utils.createConnection("default", props)) {
             Statement statement = connection.createStatement();
             statement.execute("show settings");

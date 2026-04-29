@@ -1,8 +1,8 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.QueryRowField;
-import com.tidbcloud.client.data.LakeDataType;
-import com.tidbcloud.client.data.LakeRawType;
+import com.tidbcloud.jdbc.internal.data.LakeDataType;
+import com.tidbcloud.jdbc.internal.data.LakeRawType;
+import com.tidbcloud.jdbc.internal.query.QueryRowField;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import org.apache.commons.lang3.StringUtils;
@@ -188,7 +188,7 @@ public class LakeDatabaseMetaData implements DatabaseMetaData {
     @Override
     public String getDatabaseProductName()
             throws SQLException {
-        return "TiDB Cloud";
+        return "Lake";
     }
 
     @Override
@@ -302,14 +302,14 @@ public class LakeDatabaseMetaData implements DatabaseMetaData {
     @Override
     public String getNumericFunctions()
             throws SQLException {
-        // https://docs.tidbcloud.com/reference/functions/numeric-functions
+        // https://tidbcloud.com/doc/reference/functions/numeric-functions
         return "abs,acos,asin,atan,atan2,ceil,cos,cot,degrees,e,exp,floor,ln,log,log10,mod,pi,power,radians,rand,round,sign,sin,sqrt,tan,truncate";
     }
 
     @Override
     public String getStringFunctions()
             throws SQLException {
-        // https://docs.tidbcloud.com/reference/functions/string-functions
+        // https://tidbcloud.com/doc/reference/functions/string-functions
         return "ascii,bin,bin_length,char,char_length,character_length,concat,concat_ws,elt,export_set,field,find_in_set,format,from_base64" +
                 ",hex,insert,instr,lcase,left,length,like,locate,lower,lpad,mid,oct,octet_length,ord,position,quote,regexp,regexp_instr,regexp_like" +
                 ",regexp_replace,regexp_substr,repeat,replace,reverse,right,rlike,rpad,soundex,space,strcmp,substr,substring,substring_index,to_base64,trim,ucase,unhex,upper";
@@ -324,7 +324,7 @@ public class LakeDatabaseMetaData implements DatabaseMetaData {
     @Override
     public String getTimeDateFunctions()
             throws SQLException {
-        // https://docs.tidbcloud.com/reference/functions/datetime-functions
+        // https://tidbcloud.com/doc/reference/functions/datetime-functions
 
         return "addDays,addHours,addMinutes,addMonths,addQuarters,addSeconds,addWeeks,addYears,date_add,date_diff,date_sub,date_trunc,dateName,formatDateTime,FROM_UNIXTIME,fromModifiedJulianDay,fromModifiedJulianDayOrNull,now,subtractDays,subtractHours,subtractMinutes,subtractMonths,subtractQuarters,subtractSeconds,subtractWeeks,subtractYears,timeSlot,timeSlots,timestamp_add,timestamp_sub,timeZone,timeZoneOf,timeZoneOffset,today,toDayOfMonth,toDayOfWeek,toDayOfYear,toHour,toISOWeek,toISOYear,toMinute,toModifiedJulianDay,toModifiedJulianDayOrNull,toMonday,toMonth,toQuarter,toRelativeDayNum,toRelativeHourNum,toRelativeMinuteNum,toRelativeMonthNum,toRelativeQuarterNum,toRelativeSecondNum,toRelativeWeekNum,toRelativeYearNum,toSecond,toStartOfDay,toStartOfFifteenMinutes,toStartOfFiveMinute,toStartOfHour,toStartOfInterval,toStartOfISOYear,toStartOfMinute,toStartOfMonth,toStartOfQuarter,toStartOfSecond,toStartOfTenMinutes,toStartOfWeek,toStartOfYear,toTime,toTimeZone,toUnixTimestamp,toWeek,toYear,toYearWeek,toYYYYMM,toYYYYMMDD,toYYYYMMDDhhmmss,yesterday";
     }

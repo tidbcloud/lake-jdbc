@@ -1,6 +1,6 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.StageAttachment;
+import com.tidbcloud.jdbc.internal.query.StageAttachment;
 import org.testng.annotations.Test;
 
 import static org.testng.Assert.assertEquals;
@@ -12,8 +12,7 @@ public class TestStageAttachment {
         String stagePrefix = "prefix/" + uuid;
         String fileName = "test";
         String stagePath = "@~/" + stagePrefix + fileName;
-        StageAttachment attachment = new StageAttachment.Builder().setLocation(stagePath)
-                .build();
+        StageAttachment attachment = new StageAttachment(stagePath, null, null);
         assertEquals("StageAttachment{location=@~/prefix/uuid/test, file_format_options={type=CSV}, copy_options=null}", attachment.toString());
     }
 }

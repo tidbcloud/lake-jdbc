@@ -1,0 +1,55 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="LakeProjectTests" verbose="1" parallel="none">
+  <groups>
+    <define name="UNIT">
+      <include name="UNIT"/>
+    </define>
+    <define name="IT">
+      <include name="IT"/>
+    </define>
+    <define name="UNIT_ARROW">
+      <include name="UNIT_ARROW"/>
+    </define>
+    <define name="FLAKY">
+      <include name="FLAKY"/>
+    </define>
+  </groups>
+  <test name="UnitTests">
+    <groups>
+      <run>
+        <include name="UNIT"/>
+        <exclude name="FLAKY"/>
+        <exclude name="UNIT_ARROW"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="com.tidbcloud.jdbc"/>
+      <package name="com.tidbcloud.jdbc.internal.http"/>
+      <package name="com.tidbcloud.jdbc.internal.query"/>
+      <package name="com.tidbcloud.jdbc.internal.session"/>
+    </packages>
+  </test>
+  <test name="IntegrationTests">
+    <groups>
+      <run>
+        <include name="IT"/>
+        <exclude name="FLAKY"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="com.tidbcloud.jdbc"/>
+    </packages>
+  </test>
+  <test name="UnitArrowTests">
+    <groups>
+      <run>
+        <include name="UNIT_ARROW"/>
+        <exclude name="FLAKY"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="com.tidbcloud.jdbc"/>
+      <package name="com.tidbcloud.jdbc.internal.query"/>
+    </packages>
+  </test>
+</suite>

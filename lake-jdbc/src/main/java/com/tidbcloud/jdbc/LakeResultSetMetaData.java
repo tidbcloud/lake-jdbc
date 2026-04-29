@@ -13,10 +13,10 @@ import java.sql.Types;
 import java.util.List;
 
 public class LakeResultSetMetaData implements ResultSetMetaData {
-    private final List<LakeColumnInfo> lakeColumnInfo;
+    private final List<LakeColumnInfo> databendColumnInfo;
 
-    LakeResultSetMetaData(List<LakeColumnInfo> lakeColumnInfo) {
-        this.lakeColumnInfo = lakeColumnInfo;
+    LakeResultSetMetaData(List<LakeColumnInfo> databendColumnInfo) {
+        this.databendColumnInfo = databendColumnInfo;
     }
 
     static String getTypeClassName(int type) {
@@ -66,10 +66,10 @@ public class LakeResultSetMetaData implements ResultSetMetaData {
     @Override
     public int getColumnCount()
             throws SQLException {
-        if (this.lakeColumnInfo == null) {
+        if (this.databendColumnInfo == null) {
             return 0;
         }
-        return this.lakeColumnInfo.size();
+        return this.databendColumnInfo.size();
     }
 
     @Override
@@ -215,9 +215,9 @@ public class LakeResultSetMetaData implements ResultSetMetaData {
 
     private LakeColumnInfo column(int column)
             throws SQLException {
-        if ((column <= 0) || (column > this.lakeColumnInfo.size())) {
+        if ((column <= 0) || (column > this.databendColumnInfo.size())) {
             throw new SQLException("Invalid column index: " + column);
         }
-        return this.lakeColumnInfo.get(column - 1);
+        return this.databendColumnInfo.get(column - 1);
     }
 }

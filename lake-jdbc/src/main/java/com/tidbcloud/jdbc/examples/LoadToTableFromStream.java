@@ -30,9 +30,9 @@ public class LoadToTableFromStream {
             InputStream inputStream = Files.newInputStream(Paths.get(filePath));
             long fileSize = Files.size(Paths.get("data.csv"));
             LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
-            lakeConnection.uploadStream(inputStream, stageName, prefix, fileName, fileSize, false);
+            lakeConnection.uploadStream(stageName, prefix, inputStream, fileName, fileSize, false);
 
-            // https://docs.tidbcloud.com/sql/sql-functions/table-functions/list-stage
+            // https://docs.databend.com/sql/sql-functions/table-functions/list-stage
             String sql = String.format("list %s", path);
             try(ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
@@ -41,7 +41,7 @@ public class LoadToTableFromStream {
             }
 
             // copy into table
-            // https://docs.tidbcloud.com/sql/sql-commands/dml/dml-copy-into-table
+            // https://docs.databend.com/sql/sql-commands/dml/dml-copy-into-table
             sql = String.format("copy into table1 from %s file_format =(type=csv) purge=true", path);
             try(ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {

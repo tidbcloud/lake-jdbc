@@ -1,4 +1,4 @@
-# Lake JDBC
+# TiDB Cloud Lake JDBC
 
 ![Apache License 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 [![lake-jdbc](https://img.shields.io/maven-central/v/com.tidbcloud/lake-jdbc?style=flat-square)](https://central.sonatype.dev/artifact/com.tidbcloud/lake-jdbc/0.0.1)
@@ -10,7 +10,7 @@
 
 ## Prerequisites
 
-The Lake JDBC driver requires Java 8 or later.
+The TiDB Cloud Lake JDBC driver requires Java 8 or later.
 If the minimum required version of Java is not installed on the client machines where the JDBC driver is installed, you
 must install either Oracle Java or OpenJDK.
 
@@ -25,7 +25,7 @@ Add following code block as a dependency
 <dependency>
     <groupId>com.tidbcloud</groupId>
     <artifactId>lake-jdbc</artifactId>
-    <version>0.1.0</version>
+    <version>0.4.6</version>
 </dependency>
 ```
 
@@ -37,6 +37,46 @@ Note: build from source requires Java 11+, Maven 3.6.3+
 cd lake-jdbc
 mvn clean install -DskipTests
 ```
+
+## Testing
+
+Start the local integration test environment from `tests/Makefile`:
+
+```shell
+cd tests
+make up
+make test
+```
+
+The default `make test` command runs `lake-jdbc` tests only.
+
+### Run integration tests with Arrow
+
+To run tests with Arrow result pages, set `DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT=arrow`:
+
+```shell
+cd tests
+make test DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT=arrow TEST_MVN_ARGS='-Dgroups=IT -DexcludedGroups=FLAKY'
+```
+
+When Arrow mode is enabled through `make test`, the required JVM options are added automatically:
+
+```shell
+--add-opens=java.base/java.nio=ALL-UNNAMED
+-Dio.netty.tryReflectionSetAccessible=true
+```
+
+If you run Maven directly instead of `make test`, you must set both the Arrow test environment variable and the JVM options yourself:
+
+```shell
+JAVA_TOOL_OPTIONS='--add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true' \
+DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT=arrow \
+mvn -pl lake-jdbc test -Dgroups=IT -DexcludedGroups=FLAKY
+```
+
+CI note:
+- `Standalone Test` runs the regular suite and an extra Arrow IT pass.
+- `Cluster Tests` runs the regular suite and an extra Arrow IT pass for each cluster matrix entry.
 
 ### Download jar from maven central
 
@@ -125,7 +165,7 @@ void setObject(int parameterIndex, Object x)
 
 - TIMESTAMP_TZ and TIMESTAMP map to `OffsetDateTime`, `ZonedDateTime`, `Instant` and `LocalDateTime` (TIMESTAMP_TZ can return `OffsetDateTime` but not `ZonedDateTime`).
 - Date maps to `LocalDate`
-- When parameters do not contain a timezone, Lake uses the session timezone (not the JVM zone) when storing/returning dates on lake-jdbc ≥ 0.4.3 AND query-server ≥1.2.844.
+- When parameters do not contain a timezone, Lake uses the session timezone (not the JVM zone) when storing/returning dates on lake-jdbc ≥ 0.4.3 AND databend-query ≥1.2.844.
 - Interval map to `java.time.Duration`.
 
 old Timestamp/Date are also supported, note that:
@@ -145,9 +185,18 @@ old Timestamp/Date are also supported, note that:
 The following code shows how to unwrap a JDBC Connection object to expose the methods of the LakeConnection interface.
 
 ```java
+import java.sql.DriverManager;
+import java.sql.Connection;
+import java.sql.SQLException;
 import com.tidbcloud.jdbc.LakeConnection;
-Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000");
-LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
+
+public class UnwrapExample {
+    public static void main(String[] args) throws SQLException {
+        try (Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000")) {
+            LakeConnection databendConnection = conn.unwrap(LakeConnection.class);
+        }
+    }
+}
 ```
 
 ### method `loadStreamToTable` 
@@ -158,7 +207,7 @@ int loadStreamToTable(String sql, InputStream inputStream, long fileSize, LoadMe
 
 Load data from a stream directly into a table, using either a staging or streaming approach.
 
-Available with lake-jdbc >= 0.4.1 AND query-server >= 1.2.791.
+Available with lake-jdbc >= 0.4.1 AND databend-query >= 1.2.791.
 
 **Parameters:**
 - `sql`: SQL statement with specific syntax for data loading, use special stage `_databend_load`
@@ -175,19 +224,31 @@ example:
 
 
 ```java
+import java.io.FileInputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import com.tidbcloud.jdbc.LakeConnection;
-try(Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000")) {
-    try(FileInputStream fileStream = new FileInputStream("data.csv")) {
-        // unwrap 
-        LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
-        
-        // use special stage `_databend_load`
-        String sql = "insert into my_table from @_databend_load file_format=(type=csv)";
-        
-        lakeConnection.loadStreamToTable(sql, fileStream, Files.size(Paths.get("data.csv")), LakeConnection.LoadMethod.STAGE);
+
+public class LoadStreamExample {
+    public static void main(String[] args) throws SQLException {
+        try (Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000");
+             FileInputStream fileStream = new FileInputStream("data.csv")) {
+            LakeConnection databendConnection = conn.unwrap(LakeConnection.class);
+
+            // use special stage `_databend_load`
+            String sql = "insert into my_table from @_databend_load file_format=(type=csv)";
+
+            databendConnection.loadStreamToTable(
+                    sql,
+                    fileStream,
+                    Files.size(Paths.get("data.csv")),
+                    LakeConnection.LoadMethod.STAGE);
+        }
     }
 }
-
 ```
 
 ### method `uploadStream` and `downloadStream`
@@ -197,7 +258,7 @@ Upload a `InputStream` as a single file in the stage.
 the upload method is determined by connection parameter `presigned_url_disabled`.
 
 ```java
-void uploadStream(InputStream inputStream, String stageName, String destPrefix, String destFileName, long fileSize, boolean compressData) throws SQLException;
+void uploadStream(String stageName, String destPrefix, InputStream inputStream, String destFileName, long fileSize, boolean compressData) throws SQLException;
 ```
 
 Download a single file in the stage as `InputStream`
@@ -205,3 +266,34 @@ Download a single file in the stage as `InputStream`
 ```
 InputStream downloadStream(String stageName, String filePathInStage) throws SQLException;
 ```
+
+### Use Arrow Result Format
+
+By default, the driver fetches query results in JSON format. To enable Arrow over HTTP, add
+`query_result_format=arrow` to the JDBC URL:
+
+```java
+String url = "jdbc:lake://localhost:8000/default?query_result_format=arrow";
+Connection conn = DriverManager.getConnection(url, "root", "");
+```
+
+Arrow mode is intended for query result fetching. Internal control queries still use JSON when needed.
+
+Requirements:
+
+1. Lake server must support Arrow result pages.
+2. The JVM must allow Arrow to access `java.nio` internals.
+
+Before starting your application, set:
+
+```shell
+export JAVA_TOOL_OPTIONS='--add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true'
+```
+
+If you do not want to set `JAVA_TOOL_OPTIONS` globally, pass the same options directly to `java`:
+
+```shell
+java --add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar your-app.jar
+```
+
+If `query_result_format` is not specified, the driver uses JSON.

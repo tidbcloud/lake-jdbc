@@ -1,6 +1,7 @@
 package com.tidbcloud.jdbc;
 
 
+import com.tidbcloud.jdbc.internal.binding.StatementUtil;
 import org.testng.annotations.Test;
 
 import java.util.Map;

@@ -1,16 +1,21 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.QueryResults;
-import com.tidbcloud.client.errors.QueryErrors;
 import com.tidbcloud.jdbc.exception.LakeSQLException;
+import com.tidbcloud.jdbc.internal.error.QueryError;
+import com.tidbcloud.jdbc.internal.query.QueryResults;
 import org.testng.annotations.Test;
 
+import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.regex.Pattern;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 public class TestLakeSQLException {
+    private static final Pattern QUERY_ID_PATTERN = Pattern.compile("query_id=[0-9a-f]{32}");
+
     @Test
     public void testLakeWithQueryIdSqlExceptionIncludesQueryIdInMessage() {
         LakeSQLException exception = new LakeSQLException("boom", "abc123");
@@ -30,7 +35,7 @@ public class TestLakeSQLException {
                 null,
                 null,
                 null,
-                QueryErrors.builder().setCode(1001).setMessage("syntax error").build(),
+                QueryError.builder().setCode(1001).setMessage("syntax error").build(),
                 null,
                 null,
                 0L,
@@ -63,5 +68,18 @@ public class TestLakeSQLException {
         assertEquals(wrapped.getNextException(), next);
         assertEquals(wrapped.getSuppressed().length, 1);
         assertEquals(wrapped.getSuppressed()[0], suppressed);
+    }
+
+    @Test(groups = {"IT"})
+    public void testSyntaxErrorFromServerIncludesGeneratedQueryId() throws Exception {
+        try (Connection connection = Utils.createConnection();
+             Statement statement = connection.createStatement()) {
+            SQLException exception = org.testng.Assert.expectThrows(SQLException.class,
+                    () -> statement.execute("select * from"));
+            assertTrue(exception instanceof LakeSQLException);
+            assertTrue(exception.getMessage().contains("query_id="), exception.getMessage());
+            assertTrue(QUERY_ID_PATTERN.matcher(exception.getMessage()).find(), exception.getMessage());
+            assertEquals(exception.getSQLState().length(), 32);
+        }
     }
 }

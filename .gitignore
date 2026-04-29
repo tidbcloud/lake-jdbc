@@ -4,10 +4,9 @@ target/checkstyle-*
 .idea/
 lake-jdbc/lake-jdbc-debug.log
 target/
-/lake/
-.lake/
+/databend/
+.databend/
 tests/data
 tests/compatibility/*.jar
 test-output
 .DS_Store
-dependency-reduced-pom.xml

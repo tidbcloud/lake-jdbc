@@ -1,11 +1,12 @@
 package com.tidbcloud.jdbc;
 
+import com.tidbcloud.jdbc.internal.binding.StatementUtil;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
 
 import java.util.Map;
 
-import static com.tidbcloud.jdbc.StatementUtil.replaceParameterMarksWithValues;
+import static com.tidbcloud.jdbc.internal.binding.StatementUtil.replaceParameterMarksWithValues;
 import static org.testng.Assert.assertEquals;
 
 public class StatementUtilTest {

@@ -1,7 +1,7 @@
 package com.tidbcloud.jdbc.cloud;
 
-import com.tidbcloud.client.data.LakeDataType;
-import com.tidbcloud.client.data.LakeRawType;
+import com.tidbcloud.jdbc.internal.data.LakeDataType;
+import com.tidbcloud.jdbc.internal.data.LakeRawType;
 import com.tidbcloud.jdbc.*;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -13,9 +13,13 @@ import java.sql.*;
 
 
 public class TestSpecifiedAPI {
+    public static String baseURL() {
+        return Utils.baseURL();
+    }
+
     public static Connection createConnection()
             throws SQLException {
-        return Utils.createConnection();
+        return DriverManager.getConnection(baseURL(), Utils.getUsername(), Utils.getPassword());
     }
 
     @Test(groups = {"IT"})
@@ -35,7 +39,7 @@ public class TestSpecifiedAPI {
             String testData = "1234";
             LakeConnection.LoadMethod m = LakeConnection.LoadMethod.STAGE;
             InputStream inputStream = new ByteArrayInputStream(testData.getBytes(StandardCharsets.UTF_8));
-            connection.uploadStream(inputStream, "test_unwrap", "dir1", "f1", 4, false);
+            connection.uploadStream("test_unwrap", "dir1", inputStream, "f1", 4, false);
 
             // LakePreparedStatement: no specified public method
             LakePreparedStatement ps = connection.prepareStatement("select 1").unwrap(LakePreparedStatement.class);

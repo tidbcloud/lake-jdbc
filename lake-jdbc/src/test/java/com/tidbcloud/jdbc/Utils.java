@@ -4,25 +4,14 @@ import java.sql.*;
 import java.util.Properties;
 
 public class Utils {
+    private static final String TEST_QUERY_RESULT_FORMAT = "DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT";
 
-    static String host = System.getenv("LAKE_TEST_HOST") != null ? System.getenv("LAKE_TEST_HOST").trim() : "localhost";
-    static String port = System.getenv("LAKE_TEST_CONN_PORT") != null ? System.getenv("LAKE_TEST_CONN_PORT").trim() : "8000";
-    static String username = System.getenv("LAKE_TEST_USER") != null ? System.getenv("LAKE_TEST_USER").trim() : "databend";
-    static String password = System.getenv("LAKE_TEST_PASSWORD") != null ? System.getenv("LAKE_TEST_PASSWORD").trim() : "databend";
-    static String warehouse = System.getenv("LAKE_TEST_WAREHOUSE") != null ? System.getenv("LAKE_TEST_WAREHOUSE").trim() : null;
-    static boolean ssl = System.getenv("LAKE_TEST_SSL") != null ? Boolean.parseBoolean(System.getenv("LAKE_TEST_SSL").trim()) : false;
+    static String port = System.getenv("DATABEND_TEST_CONN_PORT") != null ? System.getenv("DATABEND_TEST_CONN_PORT").trim() : "8000";
+    static String username = "databend";
+    static String password = "databend";
 
     public static String baseURL() {
-        String url = "jdbc:lake://" + host + ":" + port;
-        String separator = "?";
-        if (ssl) {
-            url += separator + "ssl=true";
-            separator = "&";
-        }
-        if (warehouse != null) {
-            url += separator + "warehouse=" + warehouse;
-        }
-        return url;
+        return buildURL(null, null);
     }
 
     public static String getUsername() {
@@ -40,35 +29,44 @@ public class Utils {
     }
 
     public static Connection createConnection(String database) throws SQLException {
-        String base = baseURL();
-        String url;
-        if (base.contains("?")) {
-            // Insert database before query params: jdbc:lake://host:port/database?params
-            int qIdx = base.indexOf("?");
-            url = base.substring(0, qIdx) + "/" + database + base.substring(qIdx);
-        } else {
-            url = base + "/" + database;
-        }
+        String url = buildURL(database, null);
         return DriverManager.getConnection(url, username, password);
     }
 
     public static Connection createConnection(String database, Properties p) throws SQLException {
-        String base = baseURL();
-        String url;
-        if (base.contains("?")) {
-            int qIdx = base.indexOf("?");
-            url = base.substring(0, qIdx) + "/" + database + base.substring(qIdx);
-        } else {
-            url = base + "/" + database;
-        }
+        String url = buildURL(database, null);
         return DriverManager.getConnection(url, p);
     }
 
 
     public static Connection createConnectionWithPresignedUrlDisable() throws SQLException {
-        String base = baseURL();
-        String url = base + (base.contains("?") ? "&" : "?") + "presigned_url_disabled=true";
+        String url = buildURL(null, "presigned_url_disabled=true");
         return DriverManager.getConnection(url, username, password);
+    }
+
+    private static String buildURL(String database, String extraQuery) {
+        StringBuilder url = new StringBuilder("jdbc:lake://localhost:").append(port);
+        if (database != null && !database.isEmpty()) {
+            url.append("/").append(database);
+        }
+        appendQueryParameter(url, testQueryResultFormat());
+        appendQueryParameter(url, extraQuery);
+        return url.toString();
+    }
+
+    private static String testQueryResultFormat() {
+        String format = System.getenv(TEST_QUERY_RESULT_FORMAT);
+        if (format == null || format.trim().isEmpty()) {
+            return null;
+        }
+        return "query_result_format=" + format.trim().toLowerCase();
+    }
+
+    private static void appendQueryParameter(StringBuilder url, String query) {
+        if (query == null || query.isEmpty()) {
+            return;
+        }
+        url.append(url.indexOf("?") >= 0 ? "&" : "?").append(query);
     }
 
     public static int countTable(Statement statement, String table) throws SQLException {
@@ -77,4 +75,3 @@ public class Utils {
         return r.getInt(1);
     }
 }
-

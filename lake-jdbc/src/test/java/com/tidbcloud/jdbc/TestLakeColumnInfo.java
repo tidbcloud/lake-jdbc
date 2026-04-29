@@ -1,7 +1,7 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.data.LakeDataType;
-import com.tidbcloud.client.data.LakeRawType;
+import com.tidbcloud.jdbc.internal.data.LakeDataType;
+import com.tidbcloud.jdbc.internal.data.LakeRawType;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -20,7 +20,7 @@ public class TestLakeColumnInfo {
     // End-to-end: new type name -> LakeColumnInfo -> correct metadata
     // =========================================================================
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testBigintColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("bigint"));
         Assert.assertEquals(info.getColumnType(), Types.BIGINT);
@@ -30,7 +30,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getScale(), 0);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testNullableBigintColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("Nullable(bigint)"));
         Assert.assertEquals(info.getColumnType(), Types.BIGINT);
@@ -39,7 +39,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getPrecision(), 19);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testBigintUnsignedColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("bigint unsigned"));
         Assert.assertEquals(info.getColumnType(), Types.BIGINT);
@@ -48,7 +48,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 20);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testTinyintColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("tinyint"));
         Assert.assertEquals(info.getColumnType(), Types.TINYINT);
@@ -58,7 +58,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getScale(), 0);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testTinyintUnsignedColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("tinyint unsigned"));
         Assert.assertEquals(info.getColumnType(), Types.TINYINT);
@@ -67,7 +67,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 4);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testSmallintColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("smallint"));
         Assert.assertEquals(info.getColumnType(), Types.SMALLINT);
@@ -76,7 +76,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 6);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testSmallintUnsignedColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("smallint unsigned"));
         Assert.assertEquals(info.getColumnType(), Types.SMALLINT);
@@ -85,7 +85,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 6);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testIntegerColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("integer"));
         Assert.assertEquals(info.getColumnType(), Types.INTEGER);
@@ -94,7 +94,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 11);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testIntegerUnsignedColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("integer unsigned"));
         Assert.assertEquals(info.getColumnType(), Types.INTEGER);
@@ -103,7 +103,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 11);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testFloatColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("float"));
         Assert.assertEquals(info.getColumnType(), Types.FLOAT);
@@ -112,7 +112,7 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 16);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testDoubleColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("double"));
         Assert.assertEquals(info.getColumnType(), Types.DOUBLE);
@@ -121,25 +121,39 @@ public class TestLakeColumnInfo {
         Assert.assertEquals(info.getColumnDisplaySize(), 24);
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testVarcharColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("varchar"));
         Assert.assertEquals(info.getColumnType(), Types.VARCHAR);
         Assert.assertFalse(info.isSigned());
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testBoolColumnInfo() {
         LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("bool"));
         Assert.assertEquals(info.getColumnType(), Types.BOOLEAN);
         Assert.assertEquals(info.getColumnDisplaySize(), 5);
     }
 
+    @Test(groups = {"UNIT"})
+    public void testTupleColumnInfo() {
+        LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("Tuple(x Int64, y Int64 NULL)"));
+        Assert.assertEquals(info.getColumnType(), Types.STRUCT);
+        Assert.assertEquals(info.getColumnTypeName(), "tuple");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testBitmapColumnInfo() {
+        LakeColumnInfo info = LakeColumnInfo.of("col", new LakeRawType("Bitmap"));
+        Assert.assertEquals(info.getColumnType(), Types.OTHER);
+        Assert.assertEquals(info.getColumnTypeName(), "bitmap");
+    }
+
     // =========================================================================
     // Verify new type names produce identical metadata to old type names
     // =========================================================================
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testNewTypeNamesMatchOldTypeNamesMetadata() {
         // bigint vs Int64
         assertSameMetadata("bigint", "Int64");
@@ -167,7 +181,7 @@ public class TestLakeColumnInfo {
         assertSameMetadata("bool", "Boolean");
     }
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testNullableNewTypeNamesMatchOldTypeNamesMetadata() {
         assertSameMetadata("Nullable(bigint)", "Nullable(Int64)");
         assertSameMetadata("Nullable(tinyint)", "Nullable(Int8)");
@@ -183,7 +197,7 @@ public class TestLakeColumnInfo {
     // JdbcTypeMapping end-to-end with new type names
     // =========================================================================
 
-    @Test(groups = {"Unit"})
+    @Test(groups = {"UNIT"})
     public void testJdbcTypeMappingWithNewTypeNames() {
         JdbcTypeMapping mapping = new JdbcTypeMapping();
 

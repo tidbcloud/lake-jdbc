@@ -3,7 +3,7 @@ package com.tidbcloud.jdbc;
 import java.util.regex.Pattern;
 
 /**
- * lake constant
+ * databend constant
  *
  * @author wayne
  */
@@ -12,5 +12,5 @@ class LakeConstant {
     public static final String BASE64_STR = "base64";
     public static final Pattern INSERT_INTO_PATTERN = Pattern.compile("(insert|replace)\\s+into");
 
-    public static final String LAKE_KEYWORDS_SELECT = "select";
+    public static final String DATABEND_KEYWORDS_SELECT = "select";
 }

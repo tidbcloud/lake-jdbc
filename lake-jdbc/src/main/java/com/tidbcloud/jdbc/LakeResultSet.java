@@ -1,28 +1,26 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.LakeClient;
-import com.tidbcloud.client.QueryResults;
-import com.tidbcloud.client.QueryRowField;
+import com.tidbcloud.jdbc.internal.query.QueryResultPages;
+import com.tidbcloud.jdbc.internal.query.QueryResults;
+import com.tidbcloud.jdbc.internal.query.QueryRowField;
+import com.tidbcloud.jdbc.internal.query.ResultPage;
+import com.tidbcloud.jdbc.internal.session.Capability;
+import com.tidbcloud.jdbc.internal.session.QueryLiveness;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.Streams;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Iterator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Stream;
 
 import static com.google.common.base.Throwables.throwIfUnchecked;
 import static java.util.Objects.requireNonNull;
@@ -30,7 +28,6 @@ import static java.util.concurrent.Executors.newCachedThreadPool;
 
 public class LakeResultSet extends AbstractLakeResultSet {
     private final Statement statement;
-    private final LakeClient client;
     @GuardedBy("this")
     private boolean closed;
     @GuardedBy("this")
@@ -38,52 +35,45 @@ public class LakeResultSet extends AbstractLakeResultSet {
 
     private final QueryLiveness liveness;
 
-    private LakeResultSet(Statement statement, LakeClient client, List<QueryRowField> schema, Map<String, String> resultSetting, long maxRows, QueryLiveness liveness) {
+    private LakeResultSet(Statement statement, QueryResultPages queryPages, List<QueryRowField> schema, Map<String, String> resultSetting, long maxRows, QueryLiveness liveness) {
+        this(statement, queryPages, schema, resultSetting, maxRows, liveness, new PrefetchingPageSource(queryPages, liveness));
+    }
+
+    private LakeResultSet(Statement statement, QueryResultPages queryPages, List<QueryRowField> schema, Map<String, String> resultSetting, long maxRows, QueryLiveness liveness, PrefetchingPageSource pageSource) {
         super(Optional.of(requireNonNull(statement, "statement is null")), schema,
-                new AsyncIterator<>(flatten(new ResultsPageIterator(client, liveness), maxRows), client), resultSetting, client.getResults().getQueryId());
+                new PagedResultCursor(pageSource, maxRows), resultSetting, queryPages.getResults().getQueryId());
         this.statement = statement;
-        this.client = client;
         this.liveness = liveness;
     }
 
-    static LakeResultSet create(Statement statement, LakeClient client, long maxRows, Capability capability)
+    static LakeResultSet create(Statement statement, QueryResultPages queryPages, long maxRows, Capability capability)
             throws SQLException {
-        requireNonNull(client, "client is null");
-        List<QueryRowField> s = client.getResults().getSchema();
-        Map<String, String> resultSettings = client.getResults().getSettings();
-        // Fallback: if top-level settings has no timezone, try session.settings
-        if (resultSettings == null || !resultSettings.containsKey("timezone")) {
-            if (client.getResults().getSession() != null && client.getResults().getSession().getSettings() != null) {
-                Map<String, String> sessionSettings = client.getResults().getSession().getSettings();
-                if (sessionSettings.containsKey("timezone")) {
-                    if (resultSettings == null) {
-                        resultSettings = sessionSettings;
-                    } else {
-                        resultSettings = new java.util.HashMap<>(resultSettings);
-                        resultSettings.put("timezone", sessionSettings.get("timezone"));
-                    }
-                }
-            }
+        requireNonNull(queryPages, "queryPages is null");
+        List<QueryRowField> schema = queryPages.getSchema();
+        if (schema == null) {
+            schema = queryPages.getResults().getSchema();
         }
+        Map<String, String> resultSettings = effectiveSettings(queryPages.getResults());
         AtomicLong lastRequestTime = new AtomicLong(System.currentTimeMillis());
-        QueryResults r = client.getResults();
-        QueryLiveness liveness = new QueryLiveness(r.getQueryId(), client.getNodeID(), lastRequestTime,  r.getResultTimeoutSecs(), capability.heartBeat());
-        return new LakeResultSet(statement, client, s, resultSettings, maxRows, liveness);
+        QueryResults results = queryPages.getResults();
+        QueryLiveness liveness = new QueryLiveness(results.getQueryId(), queryPages.getNodeID(), lastRequestTime, results.getResultTimeoutSecs(), capability.heartBeat());
+        return new LakeResultSet(statement, queryPages, schema, resultSettings, maxRows, liveness);
     }
 
-    private static <T> Iterator<T> flatten(Iterator<Iterable<T>> iterator, long maxRows) {
-        Stream<T> stream = Streams.stream(iterator)
-                .flatMap(Streams::stream);
-        if (maxRows > 0) {
-            stream = stream.limit(maxRows);
+    private static Map<String, String> effectiveSettings(QueryResults results) {
+        Map<String, String> merged = new HashMap<>();
+        if (results.getSession() != null && results.getSession().getSettings() != null) {
+            merged.putAll(results.getSession().getSettings());
         }
-        return stream.iterator();
+        if (results.getSettings() != null) {
+            merged.putAll(results.getSettings());
+        }
+        return merged;
     }
-
 
     QueryLiveness getLiveness() {
         if (closed) {
-	        return null;
+            return null;
         }
         return liveness;
     }
@@ -115,8 +105,7 @@ public class LakeResultSet extends AbstractLakeResultSet {
             closeStatement = closeStatementOnClose;
         }
 
-        ((AsyncIterator<?>) results).cancel();
-        client.close();
+        results.close();
         if (closeStatement) {
             statement.close();
         }
@@ -128,105 +117,138 @@ public class LakeResultSet extends AbstractLakeResultSet {
         return closed;
     }
 
-    static class AsyncIterator<T> extends AbstractIterator<T> {
-        private static final int MAX_QUEUED_ROWS = 50_000;
+    static class PrefetchingPageSource implements ResultPageSource {
         private static final ExecutorService executorService = newCachedThreadPool(
-                new ThreadFactoryBuilder().setNameFormat("Lake JDBC worker-%s").setDaemon(true).build());
-        private final LakeClient client;
-        private final BlockingQueue<T> rowQueue;
-        private final Semaphore semaphore = new Semaphore(0);
-        private final Future<?> future;
+                new ThreadFactoryBuilder().setNameFormat("TiDB Cloud Lake JDBC worker-%s").setDaemon(true).build());
+        private final QueryResultPages queryPages;
+        private final QueryLiveness liveness;
+        private final ExecutorService executor;
+        private volatile Future<ResultPage> inFlight;
+        private volatile boolean cancelled;
+        private boolean finished;
 
-        public AsyncIterator(Iterator<T> dataIterator, LakeClient client) {
-            this(dataIterator, client, Optional.empty());
+        PrefetchingPageSource(QueryResultPages queryPages, QueryLiveness liveness) {
+            this(queryPages, liveness, executorService);
         }
 
         @VisibleForTesting
-        AsyncIterator(Iterator<T> dataIterator, LakeClient client, Optional<BlockingQueue<T>> queue) {
-            requireNonNull(dataIterator, "dataIterator is null");
-            this.client = client;
-            this.rowQueue = queue.orElseGet(() -> new ArrayBlockingQueue<>(MAX_QUEUED_ROWS));
-            this.future = executorService.submit(() -> {
-                try {
-                    while (dataIterator.hasNext()) {
-                        rowQueue.put(dataIterator.next());
-                        semaphore.release();
-                    }
-                } catch (InterruptedException e) {
-                    client.close();
-                    rowQueue.clear();
-                    throw new RuntimeException(new SQLException("ResultSet thread was interrupted", e));
-                } finally {
-                    semaphore.release();
-                }
-            });
-        }
-
-        public void cancel() {
-            future.cancel(true);
-            // When thread interruption is mis-handled by underlying implementation of `client`, the thread which
-            // is working for `future` may be blocked by `rowQueue.put` (`rowQueue` is full) and will never finish
-            // its work. It is necessary to close `client` and drain `rowQueue` to avoid such leaks.
-            client.close();
-            rowQueue.clear();
+        PrefetchingPageSource(QueryResultPages queryPages, QueryLiveness liveness, ExecutorService executor) {
+            this.queryPages = requireNonNull(queryPages, "queryPages is null");
+            this.liveness = requireNonNull(liveness, "liveness is null");
+            this.executor = requireNonNull(executor, "executor is null");
+            this.inFlight = scheduleFetch();
         }
 
         @Override
-        protected T computeNext() {
+        public void close() {
+            cancelled = true;
+            Future<ResultPage> future = inFlight;
+            if (future != null) {
+                future.cancel(true);
+                closeCompletedPrefetchedPage(future);
+            }
+            queryPages.close();
+        }
+
+        @Override
+        public ResultPage nextPage() throws SQLException {
+            if (cancelled || finished) {
+                return null;
+            }
+
+            ResultPage page = awaitPrefetchedPage();
+            if (page == null) {
+                finished = true;
+                return null;
+            }
+            if (cancelled) {
+                closeQuietly(page);
+                return null;
+            }
+
+            inFlight = scheduleFetch();
+            return page;
+        }
+
+        private Future<ResultPage> scheduleFetch() {
+            return executor.submit(this::fetchNextPage);
+        }
+
+        private ResultPage awaitPrefetchedPage() throws SQLException {
+            Future<ResultPage> future = inFlight;
+            if (future == null) {
+                return null;
+            }
             try {
-                semaphore.acquire();
-            } catch (InterruptedException e) {
+                return future.get();
+            }
+            catch (InterruptedException e) {
                 handleInterrupt(e);
+                return null;
             }
-            if (rowQueue.isEmpty()) {
-                try {
-                    future.get();
-                } catch (InterruptedException e) {
-                    handleInterrupt(e);
-                } catch (ExecutionException e) {
-                    throwIfUnchecked(e.getCause());
-                    throw new RuntimeException(e.getCause());
+            catch (CancellationException e) {
+                if (cancelled) {
+                    return null;
                 }
-                return endOfData();
+                throw new SQLException("Prefetch cancelled", e);
             }
-            return rowQueue.poll();
+            catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof SQLException) {
+                    throw (SQLException) cause;
+                }
+                throwIfUnchecked(cause);
+                throw new SQLException("Failed to fetch result page", cause);
+            }
+        }
+
+        private ResultPage fetchNextPage() throws SQLException {
+            while (queryPages.hasNext()) {
+                ResultPage page = queryPages.getPage();
+                queryPages.advance();
+                liveness.lastRequestTime.set(System.currentTimeMillis());
+                if (page != null && page.getRowCount() > 0) {
+                    return page;
+                }
+                closeQuietly(page);
+            }
+
+            liveness.stopped = true;
+            QueryResults results = queryPages.getResults();
+            if (results != null && results.getError() != null) {
+                throw resultsException(results, queryPages.getQuery());
+            }
+            return null;
+        }
+
+        private void closeCompletedPrefetchedPage(Future<ResultPage> future) {
+            if (!future.isDone()) {
+                return;
+            }
+            try {
+                closeQuietly(future.get());
+            }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            catch (ExecutionException | CancellationException ignored) {
+            }
+        }
+
+        private static void closeQuietly(ResultPage page) {
+            if (page != null) {
+                try {
+                    page.close();
+                }
+                catch (Exception ignored) {
+                }
+            }
         }
 
         private void handleInterrupt(InterruptedException e) {
-            cancel();
+            close();
             Thread.currentThread().interrupt();
             throw new RuntimeException(new SQLException("Interrupted", e));
-        }
-    }
-
-    private static class ResultsPageIterator extends AbstractIterator<Iterable<List<Object>>> {
-        private final LakeClient client;
-        private final QueryLiveness liveness;
-
-        private ResultsPageIterator(LakeClient client, QueryLiveness liveness) {
-            this.client = client;
-            this.liveness = liveness;
-        }
-
-        // AsyncIterator will call this and put rows to queue with MAX_QUEUED_ROWS=5000
-        @Override
-        protected Iterable<List<Object>> computeNext() {
-            while (client.hasNext()) {
-                QueryResults results = client.getResults();
-                List<List<Object>> rows = results.getData();
-                client.advance();
-                liveness.lastRequestTime.set(System.currentTimeMillis());
-                if (rows != null) {
-                    return rows;
-                }
-            }
-            liveness.stopped = true;
-            // next uri is null, no more data
-            QueryResults results = client.getResults();
-            if (results.getError() != null) {
-                throw new RuntimeException(resultsException(results, client.getQuery()));
-            }
-            return endOfData();
         }
     }
 }

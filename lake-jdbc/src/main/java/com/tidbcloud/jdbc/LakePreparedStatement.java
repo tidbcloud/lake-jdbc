@@ -1,8 +1,11 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.StageAttachment;
-import com.tidbcloud.client.data.LakeRawType;
-import com.tidbcloud.jdbc.parser.BatchInsertUtils;
+import com.tidbcloud.jdbc.internal.data.LakeRawType;
+import com.tidbcloud.jdbc.internal.data.IntervalCodec;
+import com.tidbcloud.jdbc.internal.binding.BatchInsertUtils;
+import com.tidbcloud.jdbc.internal.binding.RawStatementWrapper;
+import com.tidbcloud.jdbc.internal.binding.StatementUtil;
+import com.tidbcloud.jdbc.internal.query.StageAttachment;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.*;
@@ -20,8 +23,8 @@ import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
 import static com.tidbcloud.jdbc.LakeConstant.*;
-import static com.tidbcloud.jdbc.ObjectCasts.*;
-import static com.tidbcloud.jdbc.StatementUtil.replaceParameterMarksWithValues;
+import static com.tidbcloud.jdbc.internal.binding.ObjectCasts.*;
+import static com.tidbcloud.jdbc.internal.binding.StatementUtil.replaceParameterMarksWithValues;
 import static java.lang.String.format;
 import static java.time.format.DateTimeFormatter.ISO_LOCAL_DATE;
 import static java.time.format.DateTimeFormatter.ISO_LOCAL_TIME;
@@ -69,8 +72,8 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
         Map<Integer, String> params = StatementUtil.extractColumnTypes(sql);
         List<LakeColumnInfo> list = params.entrySet().stream().map(entry -> {
             String type = entry.getValue();
-            LakeRawType lakeRawType = new LakeRawType(type);
-            return LakeColumnInfo.of(entry.getKey().toString(), lakeRawType);
+            LakeRawType databendRawType = new LakeRawType(type);
+            return LakeColumnInfo.of(entry.getKey().toString(), databendRawType);
         }).collect(Collectors.toList());
         this.paramMetaData = new LakeParameterMetaData(Collections.unmodifiableList(list), new JdbcTypeMapping());
     }
@@ -183,20 +186,10 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
         Map<String, String> copyOptions = new HashMap<>();
         copyOptions.put("PURGE", String.valueOf(connection.copyPurge()));
         copyOptions.put("NULL_DISPLAY", String.valueOf(connection.nullDisplay()));
-        StageAttachment attachment;
-        if (fileFormatOptions.size() != 0) {
-            attachment = new StageAttachment.Builder()
-                    .setLocation(stagePath)
-                    .setCopyOptions(copyOptions)
-                    .setFileFormatOptions(fileFormatOptions)
-                    .build();
-        } else {
-            attachment = new StageAttachment.Builder()
-                    .setLocation(stagePath)
-                    .setCopyOptions(copyOptions)
-                    .build();
-        }
-        return attachment;
+        return new StageAttachment(
+                stagePath,
+                fileFormatOptions.isEmpty() ? null : fileFormatOptions,
+                copyOptions);
     }
 
     /**
@@ -286,7 +279,7 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
     private static boolean isBatchInsert(String sql) {
         sql = sql.toLowerCase();
         Matcher matcher = INSERT_INTO_PATTERN.matcher(sql);
-        return matcher.find() && !sql.contains(LAKE_KEYWORDS_SELECT);
+        return matcher.find() && !sql.contains(DATABEND_KEYWORDS_SELECT);
     }
 
     private void setValueStringNoQuote(int index, String value) {
@@ -619,7 +612,7 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
 
     private void setDurationLiteral(int parameterIndex, Duration duration) throws SQLException {
         try {
-            setString(parameterIndex, Interval.encode(duration));
+            setString(parameterIndex, IntervalCodec.encode(duration));
         } catch (IllegalArgumentException ex) {
             throw new SQLException("Failed to encode Duration for interval parameter", ex);
         }

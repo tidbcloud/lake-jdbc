@@ -13,7 +13,7 @@ class LakeParameterMetaData extends JdbcWrapper implements ParameterMetaData {
     protected final List<LakeColumnInfo> params;
     protected final JdbcTypeMapping mapper;
 
-    protected LakeParameterMetaData(List<LakeColumnInfo> params, JdbcTypeMapping mapper) {
+    public LakeParameterMetaData(List<LakeColumnInfo> params, JdbcTypeMapping mapper) {
         this.params = requireNonNull(params, "connection is null");
         this.mapper = mapper;
     }

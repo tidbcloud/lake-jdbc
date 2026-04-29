@@ -7,13 +7,13 @@ import org.testng.annotations.Test;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.net.URI;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.assertNull;
 
@@ -85,7 +85,7 @@ public class TestLakeDatabaseMetaData {
                 assertEquals(minor, (int) Compatibility.driverVersion.getMinor());
             } else {
                 assertEquals(major, 0);
-                assertEquals(minor, 1);
+                assertEquals(minor, 4);
             }
         }
     }
@@ -95,8 +95,12 @@ public class TestLakeDatabaseMetaData {
         try (Connection c = Utils.createConnection()) {
             DatabaseMetaData metaData = c.getMetaData();
             String url = metaData.getURL();
-            Assert.assertTrue(url.startsWith("jdbc:lake://"), "URL should start with jdbc:lake://, got: " + url);
-            Assert.assertTrue(url.contains(Utils.host), "URL should contain host, got: " + url);
+            String expected = "jdbc:lake://http://localhost:" + Utils.port;
+            String queryResultFormat = System.getenv("DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT");
+            if (queryResultFormat != null && !queryResultFormat.trim().isEmpty()) {
+                expected += "?query_result_format=" + queryResultFormat.trim().toLowerCase();
+            }
+            Assert.assertEquals(url, expected);
         }
     }
 
@@ -105,7 +109,7 @@ public class TestLakeDatabaseMetaData {
             throws Exception {
         try (Connection connection = Utils.createConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
-            assertEquals(metaData.getDatabaseProductName(), "TiDB Cloud");
+            assertEquals(metaData.getDatabaseProductName(), "Lake");
         }
     }
 
@@ -135,7 +139,7 @@ public class TestLakeDatabaseMetaData {
             throws Exception {
         try (Connection connection = Utils.createConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
-            Assert.assertTrue(metaData.getUserName().contains(Utils.username));
+            Assert.assertTrue(metaData.getUserName().contains("databend"));
         }
     }
 
@@ -178,6 +182,24 @@ public class TestLakeDatabaseMetaData {
             try (ResultSet rs = connection.getMetaData().getColumns(null, null, null, null)) {
                 assertEquals(rs.getMetaData().getColumnCount(), 24);
             }
+        }
+    }
+
+    @Test(groups = {"IT"})
+    public void testGetTablesForMissingNameReturnsEmptyResult() throws Exception {
+        try (Connection connection = Utils.createConnection();
+             ResultSet rs = connection.getMetaData().getTables(null, null, "table_missing_for_metadata_test", null)) {
+            assertTableMetadata(rs);
+            assertFalse(rs.next());
+        }
+    }
+
+    @Test(groups = {"IT"})
+    public void testGetColumnsForMissingTableReturnsEmptyResult() throws Exception {
+        try (Connection connection = Utils.createConnection();
+             ResultSet rs = connection.getMetaData().getColumns(null, null, "table_missing_for_metadata_test", null)) {
+            assertEquals(rs.getMetaData().getColumnCount(), 24);
+            assertFalse(rs.next());
         }
     }
 

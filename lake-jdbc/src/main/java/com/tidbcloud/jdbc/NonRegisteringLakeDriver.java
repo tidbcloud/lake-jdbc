@@ -1,7 +1,5 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.jdbc.util.GlobalCookieJar;
-import okhttp3.Cookie;
 import okhttp3.OkHttpClient;
 
 import java.io.Closeable;
@@ -13,7 +11,7 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.util.Properties;
 import java.util.logging.Logger;
 
-import static com.tidbcloud.client.OkHttpUtils.userAgentInterceptor;
+import static com.tidbcloud.jdbc.internal.http.OkHttpUtils.userAgentInterceptor;
 import static com.tidbcloud.jdbc.DriverInfo.*;
 
 class NonRegisteringLakeDriver implements Driver, Closeable {
@@ -29,7 +27,7 @@ class NonRegisteringLakeDriver implements Driver, Closeable {
 
     private static OkHttpClient newHttpClient() {
         OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                .addInterceptor(userAgentInterceptor(DRIVER_NAME + "/" + DRIVER_VERSION));
+                .addInterceptor(userAgentInterceptor(USER_AGENT_VALUE));
         return builder.build();
     }
 
@@ -57,16 +55,13 @@ class NonRegisteringLakeDriver implements Driver, Closeable {
 
         LakeDriverUri uri = LakeDriverUri.create(url, info);
 
-        GlobalCookieJar cookieJar = new GlobalCookieJar();
-        cookieJar.add(new Cookie.Builder().name("cookie_enabled").value("true").domain("not_used").build());
-
         OkHttpClient.Builder builder = httpClient.newBuilder();
         uri.setupClient(builder);
         LakeConnection connection = new LakeConnection(uri, builder.build());
         // ping the server host
         if (connection.useVerify()) {
             try {
-                connection.pingLakeClientV1();
+                connection.pingLakeServer();
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
@@ -108,6 +103,5 @@ class NonRegisteringLakeDriver implements Driver, Closeable {
         // TODO: support java.util.Logging
         throw new SQLFeatureNotSupportedException();
     }
-
 
 }

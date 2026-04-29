@@ -9,11 +9,11 @@ doc: [Deploying Trino](https://trino.io/docs/current/installation/deployment.htm
 
 Currently, the Lake Trino connector is awaiting Trino community review: https://github.com/trinodb/trino/pull/23024
 
-To try it out, you could download the target [zip](https://repo.lake.com/trino/trino-lake-454.zip) and unzip it to the `lake` directory in
+To try it out, you could download the target [zip](https://repo.databend.com/trino/trino-databend-454.zip) and unzip it to the `databend` directory in
 `/data/trino/plugin`:
 
 ```bash
-cp -r trino-lake-454/* /data/trino/plugin/lake
+cp -r trino-databend-454/* /data/trino/plugin/databend
 ```
 
 #### Build Lake Connector from scratch
@@ -27,12 +27,12 @@ To build the Lake connector from scratch, clone the Lake repository and build th
 ### Configuration
 
 To configure the Lake connector, create a catalog properties file in `/data/trino/etc/catalog` named, for example,
-`lake.properties`, to mount the Lake connector as the lake catalog. Create the file with the following
+`databend.properties`, to mount the Lake connector as the databend catalog. Create the file with the following
 contents, replacing the connection properties as appropriate for your setup:
 
 ```properties
-connector.name=lake
-connection-url=jdbc:lake://host.default.lake.com:443?ssl=true
+connector.name=databend
+connection-url=jdbc:lake://host.default.databend.com:443?ssl=true
 connection-user=trino_user
 connection-password=password
 ```
@@ -86,12 +86,12 @@ query
 (varchar) -> table
 ```
 
-For example, query the lake catalog and group and concatenate all employee IDs by manager ID:
+For example, query the databend catalog and group and concatenate all employee IDs by manager ID:
 
 ```sql
 SELECT *
 FROM TABLE(
-        lake.system.query(
+        databend.system.query(
                 query = > 'SELECT
       manager_id, GROUP_CONCAT(employee_id)
     FROM
@@ -152,32 +152,32 @@ running SHOW SCHEMAS:
 
 ```sql
 SHOW
-SCHEMAS FROM lake;
+SCHEMAS FROM databend;
 ```
 
 If you have a Lake database named web, you can view the tables in this database by running SHOW TABLES:
 
 ```sql
 SHOW
-TABLES FROM lake.web;
+TABLES FROM databend.web;
 ```
 
 You can see a list of the columns in the clicks table in the web database using either of the following:
 
 ```sql
-DESCRIBE lake.web.clicks;
+DESCRIBE databend.web.clicks;
 SHOW
-COLUMNS FROM lake.web.clicks;
+COLUMNS FROM databend.web.clicks;
 ```
 
 Finally, you can access the clicks table in the web database:
 
 ```sql
 SELECT *
-FROM lake.web.clicks;
+FROM databend.web.clicks;
 ```
 
-If you used a different name for your catalog properties file, use that catalog name instead of lake in the above
+If you used a different name for your catalog properties file, use that catalog name instead of databend in the above
 examples.
 
 
@@ -200,7 +200,7 @@ Running Cli
 ```sql
 trino> show catalogs;
 Catalog
-lake
+databend
 jmx
 memory
 system
@@ -213,9 +213,9 @@ Splits: 7 total, 7 done (100.00%)
 4.89 [0 rows, OB] [0 rows/s, OB/s]
 ```
 
-Now we can use the `lake` catalog to query SQL:
+Now we can use the `databend` catalog to query SQL:
 
-trino> use lake.default;
+trino> use databend.default;
 USE
 trino:default> show tables;
 Table
@@ -230,7 +230,7 @@ bigcorps
 
 ```sql
 trino:default> create table trino_1 (id int, bb boolean, vc varchar(100), db double);
-Query 20240819_164816_00007_gr6r2 failed: line 1:1: Table 'lake.default.trino_1' already exists
+Query 20240819_164816_00007_gr6r2 failed: line 1:1: Table 'databend.default.trino_1' already exists
 create table trino_1 (id int, bb boolean, vc varchar(100), db double);
 
 trino:default> drop table trino_1;

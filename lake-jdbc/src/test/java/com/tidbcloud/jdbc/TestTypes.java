@@ -10,9 +10,11 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import java.math.BigDecimal;
 import java.sql.*;
 import java.time.*;
 import java.util.Calendar;
+import java.util.Locale;
 import java.util.TimeZone;
 
 import static com.tidbcloud.jdbc.Compatibility.driverVersion;
@@ -30,6 +32,97 @@ public class TestTypes {
                 {true,},
                 {false,},
         };
+    }
+
+    @Test(groups = {"IT"})
+    public void testGetDecimalByQueryResultFormat()
+            throws SQLException {
+        String sql = "select cast(123.456789012345 as decimal(15, 12)) as a";
+        try (Connection connection = Utils.createConnection();
+             Statement statement = connection.createStatement()) {
+            ResultSet resultSet = statement.executeQuery(sql);
+            Assert.assertTrue(resultSet.next());
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            Assert.assertEquals(metaData.getColumnType(1), Types.DECIMAL);
+            Assert.assertEquals(metaData.getPrecision(1), 15);
+            Assert.assertEquals(metaData.getScale(1), 12);
+            Assert.assertTrue(resultSet.getObject(1) instanceof BigDecimal);
+            Assert.assertEquals(resultSet.getBigDecimal(1).toPlainString(), "123.456789012345");
+            Assert.assertEquals(resultSet.getBigDecimal("a").toPlainString(), "123.456789012345");
+            Assert.assertFalse(resultSet.next());
+        }
+    }
+
+    @Test(groups = {"IT"})
+    public void testResultSetMetaDataForLakeScalarTypes()
+            throws SQLException {
+        String tableName = "test_type_mapping_scalar";
+        try (Connection connection = Utils.createConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("create or replace table " + tableName
+                    + " (b bool, i8 int8, u8 uint8, i16 int16, u16 uint16,"
+                    + " i32 int32, u32 uint32, i64 int64, u64 uint64,"
+                    + " f32 float32, f64 float64, s string, bin binary,"
+                    + " d date, dt datetime, dec decimal(10, 2))");
+
+            try (ResultSet resultSet = statement.executeQuery("select * from " + tableName + " where 1=2")) {
+                ResultSetMetaData metaData = resultSet.getMetaData();
+                Assert.assertEquals(metaData.getColumnCount(), 16);
+                assertColumnMeta(metaData, 1, "b", Types.BOOLEAN, "boolean");
+                assertColumnMeta(metaData, 2, "i8", Types.TINYINT, "int8");
+                assertColumnMeta(metaData, 3, "u8", Types.TINYINT, "uint8");
+                assertColumnMeta(metaData, 4, "i16", Types.SMALLINT, "int16");
+                assertColumnMeta(metaData, 5, "u16", Types.SMALLINT, "uint16");
+                assertColumnMeta(metaData, 6, "i32", Types.INTEGER, "int32");
+                assertColumnMeta(metaData, 7, "u32", Types.INTEGER, "uint32");
+                assertColumnMeta(metaData, 8, "i64", Types.BIGINT, "int64");
+                assertColumnMeta(metaData, 9, "u64", Types.BIGINT, "uint64");
+                assertColumnMeta(metaData, 10, "f32", Types.FLOAT, "float32");
+                assertColumnMeta(metaData, 11, "f64", Types.DOUBLE, "float64");
+                assertColumnMeta(metaData, 12, "s", Types.VARCHAR, "string");
+                assertColumnMeta(metaData, 13, "bin", Types.BINARY, "binary");
+                assertColumnMeta(metaData, 14, "d", Types.DATE, "date");
+                assertColumnMeta(metaData, 15, "dt", Types.TIMESTAMP, "timestamp");
+                assertColumnMeta(metaData, 16, "dec", Types.DECIMAL, "decimal");
+                Assert.assertEquals(metaData.getPrecision(16), 10);
+                Assert.assertEquals(metaData.getScale(16), 2);
+            }
+        }
+    }
+
+    @Test(groups = {"IT"})
+    public void testResultSetMetaDataForLakeComplexTypes()
+            throws SQLException {
+        String tableName = "test_type_mapping_complex";
+        try (Connection connection = Utils.createConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("create or replace table " + tableName
+                    + " (v variant, a array(int64), t tuple(x int64, y int64 null), m map(string, int64))");
+
+            try (ResultSet resultSet = statement.executeQuery("select * from " + tableName + " where 1=2")) {
+                ResultSetMetaData metaData = resultSet.getMetaData();
+                Assert.assertEquals(metaData.getColumnCount(), 4);
+                assertColumnMeta(metaData, 1, "v", Types.VARCHAR, "variant");
+                assertColumnMeta(metaData, 2, "a", Types.ARRAY, "array");
+                assertColumnMeta(metaData, 3, "t", Types.STRUCT, "tuple");
+                assertColumnMeta(metaData, 4, "m", Types.OTHER, "map");
+            }
+        }
+    }
+
+    @Test(groups = {"IT"})
+    public void testResultSetMetaDataForLakeSpecialTypes()
+            throws SQLException {
+        try (Connection connection = Utils.createConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("set enable_geo_create_table=1");
+            assertOptionalSingleColumnMeta(statement, "test_type_mapping_geometry", "g", "geometry",
+                    "create or replace table test_type_mapping_geometry (g geometry)",
+                    Types.OTHER, "geometry");
+            assertOptionalSingleColumnMeta(statement, "test_type_mapping_bitmap", "bm", "bitmap",
+                    "create or replace table test_type_mapping_bitmap (bm bitmap)",
+                    Types.OTHER, "bitmap");
+        }
     }
 
     @Test(groups = {"IT"}, dataProvider = "flag")
@@ -421,7 +514,7 @@ public class TestTypes {
         if (Compatibility.skipDriverBugLowerThen("0.4.3")) {
             return;
         }
-        try (Connection c = Utils.createConnection();
+        try (Connection c = Utils.createConnectionWithPresignedUrlDisable();
              Statement s = c.createStatement()) {
             s.execute("create or replace table t1 (c1 string, c2 string, c3 string, c4 string, c5 string, c6 string, c7 string, c8 string, c9 string)");
 
@@ -472,7 +565,7 @@ public class TestTypes {
     @Test(groups = "IT", dataProvider = "complexDataType")
     public void TestBatchInsertWithComplexDataType(boolean presigned,  boolean placeholder) throws SQLException {
         String tableName = String.format("test_object_%s_%s", presigned, placeholder).toLowerCase();
-        try (Connection c = Utils.createConnection();
+        try (Connection c = presigned ? Utils.createConnection() : Utils.createConnectionWithPresignedUrlDisable();
              Statement s = c.createStatement()
         ) {
             c.setAutoCommit(false);
@@ -506,4 +599,45 @@ public class TestTypes {
             Assert.assertFalse(r.next());
         }
     }
+
+    private void assertColumnMeta(ResultSetMetaData metaData, int columnIndex, String columnLabel, int sqlType, String typeName)
+            throws SQLException {
+        Assert.assertEquals(metaData.getColumnLabel(columnIndex), columnLabel);
+        Assert.assertEquals(metaData.getColumnType(columnIndex), sqlType);
+        Assert.assertEquals(metaData.getColumnTypeName(columnIndex), typeName);
+    }
+
+    private void assertOptionalSingleColumnMeta(Statement statement, String tableName, String columnLabel, String typeKeyword,
+                                                String createTableSql, int sqlType, String typeName)
+            throws SQLException {
+        try {
+            statement.execute(createTableSql);
+        } catch (SQLException e) {
+            if (isUnsupportedTypeError(e, typeKeyword)) {
+                System.out.printf("Skipping metadata mapping check for %s: %s%n", typeKeyword, e.getMessage());
+                return;
+            }
+            throw e;
+        }
+
+        try (ResultSet resultSet = statement.executeQuery("select * from " + tableName + " where 1=2")) {
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            Assert.assertEquals(metaData.getColumnCount(), 1);
+            assertColumnMeta(metaData, 1, columnLabel, sqlType, typeName);
+        }
+    }
+
+    private boolean isUnsupportedTypeError(SQLException e, String typeKeyword) {
+        String message = e.getMessage();
+        if (message == null) {
+            return false;
+        }
+        String lowerMessage = message.toLowerCase(Locale.ROOT);
+        String lowerKeyword = typeKeyword.toLowerCase(Locale.ROOT);
+        return lowerMessage.contains(lowerKeyword)
+                && (lowerMessage.contains("unexpected")
+                || lowerMessage.contains("unsupported")
+                || lowerMessage.contains("unknown"));
+    }
+
 }

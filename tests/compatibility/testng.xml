@@ -13,10 +13,8 @@
       <class name="com.tidbcloud.jdbc.TestLakeDriverUri"/>
       <class name="com.tidbcloud.jdbc.TestLakeParameterMetaData"/>
       <class name="com.tidbcloud.jdbc.TestFileTransfer"/>
-      <class name="com.tidbcloud.jdbc.TestGeometry"/>
       <class name="com.tidbcloud.jdbc.TestHeartbeat"/>
       <class name="com.tidbcloud.jdbc.TestPrepareStatement"/>
-      <class name="com.tidbcloud.jdbc.TestPresignContext"/>
       <class name="com.tidbcloud.jdbc.TestTempTable"/>
       <class name="com.tidbcloud.jdbc.TestTransaction"/>
     </classes>

@@ -18,8 +18,8 @@ public class TestHeartbeat {
         // on the server side, the expired query is put into a queue before not deleted.
         // we need the query to expire before
         p.setProperty("max_threads", "32");
-        p.setProperty("user", Utils.getUsername());
-        p.setProperty("password", Utils.getPassword());
+        p.setProperty("user", "databend");
+        p.setProperty("password", "databend");
         try (Connection c1 = Utils.createConnection("default", p)) {
             Statement statement = c1.createStatement();
             statement.execute("set http_handler_result_timeout_secs=2");

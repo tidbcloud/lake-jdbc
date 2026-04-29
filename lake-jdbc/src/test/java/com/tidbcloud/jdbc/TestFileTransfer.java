@@ -1,7 +1,5 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.jdbc.cloud.LakeCopyParams;
-import com.tidbcloud.jdbc.cloud.LakeStage;
 import de.siegmar.fastcsv.writer.CsvWriter;
 import de.siegmar.fastcsv.writer.LineDelimiter;
 import okhttp3.OkHttpClient;
@@ -111,13 +109,12 @@ public class TestFileTransfer {
         try (FileInputStream fileInputStream = new FileInputStream(f);
              Connection connection = Utils.createConnection()) {
             String stageName = "test_stage";
-            // use FileTransferAPI for compat test
-            FileTransferAPI lakeConnection = connection.unwrap(FileTransferAPI.class);
+            LakeConnection lakeConnection = connection.unwrap(LakeConnection.class);
             String sql = String.format("CREATE STAGE IF NOT EXISTS %s", stageName);
             Statement statement = connection.createStatement();
             statement.execute(sql);
             lakeConnection.uploadStream(stageName, "jdbc/test/", fileInputStream, "test.csv", f.length(), false);
-            downloaded = lakeConnection.downloadStream(stageName, "jdbc/test/test.csv", false);
+            downloaded = lakeConnection.downloadStream(stageName, "jdbc/test/test.csv");
             byte[] arr = streamToByteArray(downloaded);
             Assert.assertEquals(arr.length, f.length());
         } finally {
@@ -137,13 +134,12 @@ public class TestFileTransfer {
 
 
             String stageName = "test_stage_np";
-            // use FileTransferAPI for compat test
-            FileTransferAPI lakeConnection = connection.unwrap(FileTransferAPI.class);
+            LakeConnection lakeConnection = connection.unwrap(LakeConnection.class);
             String sql = String.format("CREATE STAGE IF NOT EXISTS %s", stageName);
             Statement statement = connection.createStatement();
             statement.execute(sql);
             lakeConnection.uploadStream(stageName, "jdbc/test/", fileInputStream, "test.csv", f.length(), false);
-            InputStream downloaded = lakeConnection.downloadStream(stageName, "jdbc/test/test.csv", false);
+            InputStream downloaded = lakeConnection.downloadStream(stageName, "jdbc/test/test.csv");
             byte[] arr = streamToByteArray(downloaded);
             Assert.assertEquals(arr.length, f.length());
         } finally {
@@ -158,16 +154,15 @@ public class TestFileTransfer {
         try (FileInputStream fileInputStream = new FileInputStream(f)) {
             Connection connection = Utils.createConnection();
             String stageName = "test_stage";
-            // use FileTransferAPI for compat test
-            FileTransferAPI lakeConnection = connection.unwrap(FileTransferAPI.class);
+            LakeConnection lakeConnection = connection.unwrap(LakeConnection.class);
             String sql = String.format("CREATE STAGE IF NOT EXISTS %s", stageName);
             Statement statement = connection.createStatement();
             statement.execute(sql);
             lakeConnection.uploadStream(stageName, "jdbc/c2/", fileInputStream, "complex.csv", f.length(), false);
             fileInputStream.close();
-            LakeStage s = LakeStage.builder().stageName(stageName).path("jdbc/c2/").build();
-            LakeCopyParams p = LakeCopyParams.builder().setPattern("complex.csv").setDatabaseTableName("copy_into").setLakeStage(s).build();
-            lakeConnection.copyIntoTable(null, "copy_into", p);
+            statement.execute(String.format(
+                    "COPY INTO copy_into FROM @%s/jdbc/c2/ PATTERN='complex.csv' FILE_FORMAT=(type=CSV)",
+                    stageName));
             Statement stmt = connection.createStatement();
             ResultSet r = stmt.executeQuery("SELECT * FROM copy_into");
             while (r.next()) {
@@ -204,9 +199,9 @@ public class TestFileTransfer {
             statement.execute(String.format("create or replace database %s", dbName));
             statement.execute(String.format("use %s", dbName));
             statement.execute("create or replace table test_load(i int, a Variant, b string)");
-            LakeConnection lakeConnection = connection.unwrap(LakeConnection.class);
+            LakeConnection databendConnection = connection.unwrap(LakeConnection.class);
             String sql = "insert into test_load from @_databend_load file_format=(type=csv)";
-            int nUpdate = lakeConnection.loadStreamToTable(sql, fileInputStream, f.length(), LakeConnection.LoadMethod.valueOf(method));
+            int nUpdate = databendConnection.loadStreamToTable(sql, fileInputStream, f.length(), LakeConnection.LoadMethod.valueOf(method));
             Assert.assertEquals(nUpdate, 10);
             fileInputStream.close();
             ResultSet r = statement.executeQuery("SELECT * FROM test_load");
@@ -216,6 +211,27 @@ public class TestFileTransfer {
                 n += 1;
             }
             Assert.assertEquals(10, n);
+        }
+    }
+
+    @Test(groups = {"IT"})
+    public void testLoadStreamToTableRejectsSqlWithoutSpecialStage() throws SQLException {
+        if (!Compatibility.driverCapability.streamingLoad) {
+            return;
+        }
+        if (!Compatibility.serverCapability.streamingLoad) {
+            return;
+        }
+
+        try (Connection connection = Utils.createConnectionWithPresignedUrlDisable()) {
+            LakeConnection databendConnection = connection.unwrap(LakeConnection.class);
+            SQLException exception = Assert.expectThrows(SQLException.class, () ->
+                    databendConnection.loadStreamToTable(
+                            "insert into test_load values (1)",
+                            new ByteArrayInputStream(new byte[0]),
+                            0,
+                            LakeConnection.LoadMethod.STREAMING));
+            Assert.assertTrue(exception.getMessage().contains("@_databend_load"));
         }
     }
 }

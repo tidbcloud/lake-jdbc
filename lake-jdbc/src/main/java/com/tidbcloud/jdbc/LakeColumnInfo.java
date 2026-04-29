@@ -1,7 +1,7 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.data.LakeRawType;
-import com.tidbcloud.client.data.LakeTypes;
+import com.tidbcloud.jdbc.internal.data.LakeRawType;
+import com.tidbcloud.jdbc.internal.data.LakeTypes;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -253,20 +253,20 @@ public class LakeColumnInfo {
         Builder() {
         }
 
-        private Builder(LakeColumnInfo lakeColumnInfo) {
-            this.columnName = lakeColumnInfo.columnName;
-            this.columnType = lakeColumnInfo.columnType;
-            this.columnLabel = lakeColumnInfo.columnLabel;
-            this.type = lakeColumnInfo.type;
-            this.columnDisplaySize = lakeColumnInfo.columnDisplaySize;
-            this.tableName = lakeColumnInfo.tableName;
-            this.schemaName = lakeColumnInfo.schemaName;
-            this.catalogName = lakeColumnInfo.catalogName;
-            this.scale = lakeColumnInfo.scale;
-            this.columnParameterTypes = lakeColumnInfo.columnParameterTypes;
-            this.signed = lakeColumnInfo.signed;
-            this.currency = lakeColumnInfo.currency;
-            this.nullable = lakeColumnInfo.nullable;
+        private Builder(LakeColumnInfo databendColumnInfo) {
+            this.columnName = databendColumnInfo.columnName;
+            this.columnType = databendColumnInfo.columnType;
+            this.columnLabel = databendColumnInfo.columnLabel;
+            this.type = databendColumnInfo.type;
+            this.columnDisplaySize = databendColumnInfo.columnDisplaySize;
+            this.tableName = databendColumnInfo.tableName;
+            this.schemaName = databendColumnInfo.schemaName;
+            this.catalogName = databendColumnInfo.catalogName;
+            this.scale = databendColumnInfo.scale;
+            this.columnParameterTypes = databendColumnInfo.columnParameterTypes;
+            this.signed = databendColumnInfo.signed;
+            this.currency = databendColumnInfo.currency;
+            this.nullable = databendColumnInfo.nullable;
         }
 
 

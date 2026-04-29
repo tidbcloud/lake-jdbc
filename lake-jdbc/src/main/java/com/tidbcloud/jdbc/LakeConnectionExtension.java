@@ -38,21 +38,7 @@ public interface LakeConnectionExtension {
     void uploadStream(String stageName, String destPrefix, InputStream inputStream, String destFileName, long fileSize, boolean compressData) throws SQLException;
 
     /**
-     * Upload inputStream to the lake internal stage, the data would be uploaded as one file with no split.
-     * Caller should close the input stream after the upload is done.
-     *
-     * @param stageName the stage which receive uploaded file
-     * @param destPrefix the prefix of the file name in the stage
-     * @param inputStream the input stream of the file
-     * @param destFileName the destination file name in the stage
-     * @param fileSize the file size in the stage
-     * @param compressData whether to compress the data
-     * @throws SQLException failed to upload input stream
-     */
-    void uploadStream(InputStream inputStream, String stageName, String destPrefix, String destFileName, long fileSize, boolean compressData) throws SQLException;
-
-    /**
-     * Download a file from the lake internal stage, the data would be downloaded as one file with no split.
+     * Download a file from the databend internal stage, the data would be downloaded as one file with no split.
      *
      * @param stageName the stage which contains the file
      * @param sourceFileName the file name in the stage

@@ -1,14 +1,15 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.PaginationOptions;
+import com.tidbcloud.jdbc.internal.session.PaginationOptions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.Map;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
-// all possible JDBC properties options currently supported by lake driver
+// all possible JDBC properties options currently supported by databend driver
 public final class ConnectionProperties {
     public static final ConnectionProperty<String> USER = new User();
     public static final ConnectionProperty<String> PASSWORD = new Password();
@@ -22,12 +23,6 @@ public final class ConnectionProperties {
     public static final ConnectionProperty<String> SSL_MODE = new SSLMode();
     static final ConnectionProperty<String> TENANT = new Tenant();
     public static final ConnectionProperty<String> DATABASE = new Database();
-    // Deprecated multi-host knobs kept for compatibility to avoid hard failures.
-    public static final ConnectionProperty<Integer> MAX_FAILOVER_RETRY = new MaxFailoverRetry();
-    public static final ConnectionProperty<String> LOAD_BALANCING_POLICY = new LoadBalancingPolicy();
-    public static final ConnectionProperty<Boolean> AUTO_DISCOVERY = new AutoDiscovery();
-    public static final ConnectionProperty<Integer> NODE_DISCOVERY_INTERVAL = new NodeDiscoveryInterval();
-    public static final ConnectionProperty<Boolean> ENABLE_MOCK = new EnableMock();
     public static final ConnectionProperty<String> ACCESS_TOKEN = new AccessToken();
 
     public static final ConnectionProperty<Integer> CONNECTION_TIMEOUT = new ConnectionTimeout();
@@ -35,10 +30,12 @@ public final class ConnectionProperties {
     public static final ConnectionProperty<Integer> QUERY_TIMEOUT = new QueryTimeout();
     public static final ConnectionProperty<Integer> SOCKET_TIMEOUT = new SocketTimeout();
 
-    public static final ConnectionProperty<String> PRESIGNED_URL_DISABLED = new PresignedUrlDisabled();
+    public static final ConnectionProperty<Boolean> PRESIGNED_URL_DISABLED = new PresignedUrlDisabled();
+    public static final ConnectionProperty<String> PRESIGN = new Presign();
     public static final ConnectionProperty<Boolean> COPY_PURGE = new CopyPurge();
     public static final ConnectionProperty<String> NULL_DISPLAY = new NullDisplay();
     public static final ConnectionProperty<String> BINARY_FORMAT = new BinaryFormat();
+    public static final ConnectionProperty<String> QUERY_RESULT_FORMAT = new QueryResultFormatProperty();
     public static final ConnectionProperty<Integer> WAIT_TIME_SECS = new WaitTimeSecs();
 
     public static final ConnectionProperty<Integer> MAX_ROWS_IN_BUFFER = new MaxRowsInBuffer();
@@ -59,15 +56,16 @@ public final class ConnectionProperties {
             .add(DATABASE)
             .add(ACCESS_TOKEN)
             .add(PRESIGNED_URL_DISABLED)
+            .add(PRESIGN)
             .add(QUERY_TIMEOUT)
             .add(CONNECTION_TIMEOUT)
             .add(SOCKET_TIMEOUT)
+            .add(QUERY_RESULT_FORMAT)
             .add(WAIT_TIME_SECS)
             .add(MAX_ROWS_IN_BUFFER)
             .add(MAX_ROWS_PER_PAGE)
             .add(SESSION_SETTINGS)
             .build();
-    // Deprecated multi-host properties are intentionally excluded from ALL_PROPERTIES so we can detect user-specified values.
     private static final Map<String, String> DEFAULTS;
 
     public static Set<ConnectionProperty<?>> allProperties() {
@@ -148,38 +146,6 @@ public final class ConnectionProperties {
         }
     }
 
-    private static class MaxFailoverRetry extends AbstractConnectionProperty<Integer> {
-        public MaxFailoverRetry() {
-            super("max_failover_retry", Optional.of("0"), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
-        }
-    }
-
-    private static class LoadBalancingPolicy
-            extends AbstractConnectionProperty<String> {
-        public LoadBalancingPolicy() {
-            super("load_balancing_policy", Optional.of("disabled"), NOT_REQUIRED, ALLOWED, STRING_CONVERTER);
-        }
-    }
-
-    private static class AutoDiscovery extends AbstractConnectionProperty<Boolean> {
-        public AutoDiscovery() {
-            super("auto_discovery", Optional.of("false"), NOT_REQUIRED, ALLOWED, BOOLEAN_CONVERTER);
-        }
-    }
-
-    private static class NodeDiscoveryInterval extends AbstractConnectionProperty<Integer> {
-        public NodeDiscoveryInterval() {
-            super("node_discovery_interval", Optional.of("300000"), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
-        }
-    }
-
-    private static class EnableMock extends AbstractConnectionProperty<Boolean> {
-        public EnableMock() {
-            super("enable_mock", Optional.of("false"), NOT_REQUIRED, ALLOWED, BOOLEAN_CONVERTER);
-        }
-    }
-
-
     private static class AccessToken
             extends AbstractConnectionProperty<String> {
         public AccessToken() {
@@ -188,9 +154,16 @@ public final class ConnectionProperties {
     }
 
     private static class PresignedUrlDisabled
-            extends AbstractConnectionProperty<String> {
+            extends AbstractConnectionProperty<Boolean> {
         public PresignedUrlDisabled() {
-            super("presigned_url_disabled", Optional.of("auto"), NOT_REQUIRED, ALLOWED, STRING_CONVERTER);
+            super("presigned_url_disabled", Optional.of("false"), NOT_REQUIRED, ALLOWED, BOOLEAN_CONVERTER);
+        }
+    }
+
+    private static class Presign
+            extends AbstractConnectionProperty<String> {
+        public Presign() {
+            super("presign", NOT_REQUIRED, ALLOWED, STRING_CONVERTER);
         }
     }
 
@@ -211,6 +184,24 @@ public final class ConnectionProperties {
             extends AbstractConnectionProperty<String> {
         public BinaryFormat() {
             super("binary_format", Optional.of(""), NOT_REQUIRED, ALLOWED, STRING_CONVERTER);
+        }
+    }
+
+    private static class QueryResultFormatProperty
+            extends AbstractConnectionProperty<String> {
+        public QueryResultFormatProperty() {
+            super("query_result_format", Optional.empty(), NOT_REQUIRED, ALLOWED,
+                    QueryResultFormatProperty::normalizeQueryResultFormat,
+                    new String[]{"json", "arrow"},
+                    null);
+        }
+
+        private static String normalizeQueryResultFormat(String value) {
+            String normalized = value.trim().toLowerCase(Locale.ENGLISH);
+            if ("json".equals(normalized) || "arrow".equals(normalized)) {
+                return normalized;
+            }
+            throw new IllegalArgumentException("Unsupported query result format: " + value);
         }
     }
 

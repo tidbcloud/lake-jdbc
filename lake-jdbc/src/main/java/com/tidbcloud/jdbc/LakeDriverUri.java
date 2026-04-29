@@ -1,15 +1,19 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.jdbc.util.GlobalCookieJar;
-import com.tidbcloud.jdbc.util.URLUtils;
+import com.tidbcloud.jdbc.internal.QueryResultFormat;
+import com.tidbcloud.jdbc.internal.session.LakeSessionCookieJar;
+import com.tidbcloud.jdbc.internal.session.SessionHandleConfig;
+import com.tidbcloud.jdbc.internal.session.SessionState;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
 import com.google.common.net.HostAndPort;
 import okhttp3.Cookie;
 import okhttp3.OkHttpClient;
 
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.sql.SQLException;
 import java.util.AbstractMap;
 import java.util.HashMap;
@@ -20,8 +24,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
+import java.nio.charset.StandardCharsets;
 
-import static com.tidbcloud.client.OkHttpUtils.*;
+import static com.tidbcloud.jdbc.internal.http.OkHttpUtils.*;
 import static com.tidbcloud.jdbc.ConnectionProperties.*;
 import static com.tidbcloud.jdbc.LakeConstant.ENABLE_STR;
 import static com.google.common.base.MoreObjects.firstNonNull;
@@ -52,8 +57,10 @@ final class LakeDriverUri {
     private final boolean copyPurge;
     private final String nullDisplay;
     private final String binaryFormat;
+    private final QueryResultFormat queryResultFormat;
     private final String database;
-    private final String presignedUrlDisabled;
+    private final boolean presignedUrlDisabled;
+    private final String presign;
     private final Integer connectionTimeout;
     private final Integer queryTimeout;
     private final Integer socketTimeout;
@@ -79,10 +86,12 @@ final class LakeDriverUri {
         this.tenant = TENANT.getValue(properties).orElse("");
         this.uri = canonicalizeUri(rawUri, this.useSecureConnection, this.sslmode);
         this.database = DATABASE.getValue(properties).orElse("default");
-        this.presignedUrlDisabled = PRESIGNED_URL_DISABLED.getValue(properties).orElse("auto");
+        this.presignedUrlDisabled = PRESIGNED_URL_DISABLED.getRequiredValue(properties);
+        this.presign = PRESIGN.getValue(properties).orElse("");
         this.copyPurge = COPY_PURGE.getValue(properties).orElse(true);
         this.nullDisplay = NULL_DISPLAY.getValue(properties).orElse("\\N");
         this.binaryFormat = BINARY_FORMAT.getValue(properties).orElse("");
+        this.queryResultFormat = QueryResultFormat.fromValue(QUERY_RESULT_FORMAT.getValue(properties).orElse("json"));
         this.waitTimeSecs = WAIT_TIME_SECS.getRequiredValue(properties);
         this.connectionTimeout = CONNECTION_TIMEOUT.getRequiredValue(properties);
         this.queryTimeout = QUERY_TIMEOUT.getRequiredValue(properties);
@@ -97,8 +106,6 @@ final class LakeDriverUri {
 
         String settingsStr = SESSION_SETTINGS.getValue(properties).orElse("");
         this.sessionSettings = parseSessionSettings(settingsStr);
-
-        warnDeprecatedMultiHostProperties(this.properties);
 
     }
 
@@ -176,7 +183,7 @@ final class LakeDriverUri {
             if (colonPos > 0) {
                 String user = userPass.substring(0, colonPos);
                 String pass = userPass.substring(colonPos + 1);
-                String encodePass = URLUtils.urlEncode(pass);
+                String encodePass = urlEncode(pass);
                 properties.put(USER.getKey(), user);
                 properties.put(ConnectionProperties.PASSWORD.getKey(), encodePass);
             } else {
@@ -185,6 +192,14 @@ final class LakeDriverUri {
             url = url.substring(atPos + 1);
         }
         return url;
+    }
+
+    private static String urlEncode(String target) {
+        try {
+            return URLEncoder.encode(target, StandardCharsets.UTF_8.toString());
+        } catch (UnsupportedEncodingException e) {
+            return null;
+        }
     }
 
     private static void setProperties(Properties properties, Map<String, String> values) {
@@ -297,16 +312,16 @@ final class LakeDriverUri {
         return uri;
     }
 
-    public URI getUri(String query_id) {
-        return getUri();
-    }
-
     public String getDatabase() {
         return database;
     }
 
-    public String presignedUrlDisabled() {
+    public Boolean presignedUrlDisabled() {
         return presignedUrlDisabled;
+    }
+
+    public String getPresign() {
+        return presign;
     }
 
     public Boolean copyPurge() {
@@ -345,6 +360,10 @@ final class LakeDriverUri {
         return binaryFormat;
     }
 
+    public String getQueryResultFormat() {
+        return queryResultFormat.value();
+    }
+
     public Integer getConnectionTimeout() {
         return connectionTimeout;
     }
@@ -373,13 +392,34 @@ final class LakeDriverUri {
         return sessionSettings;
     }
 
+    public SessionHandleConfig toSessionHandleConfig() {
+        SessionState initialSession = new SessionState.Builder()
+                .setDatabase(this.database)
+                .setSettings(this.sessionSettings)
+                .build();
+        return SessionHandleConfig.builder()
+                .setBaseUri(this.uri)
+                .setQueryTimeoutSecs(this.queryTimeout)
+                .setConnectionTimeoutSecs(this.connectionTimeout)
+                .setSocketTimeoutSecs(this.socketTimeout)
+                .setQueryResultFormat(this.queryResultFormat)
+                .setWaitTimeSecs(this.waitTimeSecs)
+                .setMaxRowsInBuffer(this.maxRowsInBuffer)
+                .setMaxRowsPerPage(this.maxRowsPerPage)
+                .setWarehouse(this.warehouse)
+                .setTenant(this.tenant)
+                .setDebug(this.debug)
+                .setInitialSession(initialSession)
+                .build();
+    }
+
     public Properties getProperties() {
         return properties;
     }
 
     public void setupClient(OkHttpClient.Builder builder) throws SQLException {
         try {
-            GlobalCookieJar cookieJar = new GlobalCookieJar();
+            LakeSessionCookieJar cookieJar = new LakeSessionCookieJar();
             cookieJar.add(new Cookie.Builder().name("cookie_enabled").value("true").domain("not_used").build());
             builder.cookieJar(cookieJar);
 
@@ -405,17 +445,4 @@ final class LakeDriverUri {
         }
     }
 
-    private void warnDeprecatedMultiHostProperties(Properties mergedProperties) {
-        warnDeprecatedProperty(mergedProperties, LOAD_BALANCING_POLICY);
-        warnDeprecatedProperty(mergedProperties, MAX_FAILOVER_RETRY);
-        warnDeprecatedProperty(mergedProperties, AUTO_DISCOVERY);
-        warnDeprecatedProperty(mergedProperties, NODE_DISCOVERY_INTERVAL);
-        warnDeprecatedProperty(mergedProperties, ENABLE_MOCK);
-    }
-
-    private void warnDeprecatedProperty(Properties mergedProperties, ConnectionProperty<?> property) {
-        if (mergedProperties.containsKey(property.getKey())) {
-            logger.warning("Connection property '" + property.getKey() + "' is deprecated and ignored because multi-host features were removed.");
-        }
-    }
 }

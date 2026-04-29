@@ -1,6 +1,6 @@
 package com.tidbcloud.jdbc;
 
-import com.tidbcloud.client.data.LakeDataType;
+import com.tidbcloud.jdbc.internal.data.LakeDataType;
 
 import java.sql.Types;
 

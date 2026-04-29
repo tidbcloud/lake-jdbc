@@ -20,7 +20,7 @@ class Examples {
         // set up
         Connection c = createConnection();
         logger.info("-----------------");
-        logger.info("Lake JDBC Examples");
+        logger.info("TiDB Cloud Lake JDBC Examples");
         // execute demo
         c.createStatement().execute("drop table if exists test_prepare_statement");
         c.createStatement().execute("create table test_prepare_statement (a int, b string)");
