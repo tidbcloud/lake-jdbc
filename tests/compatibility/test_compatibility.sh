@@ -2,6 +2,12 @@
 
 set -ex
 
+LAKE_JDBC_RELEASE_REPO="${LAKE_JDBC_RELEASE_REPO:-tidbcloud/lake-jdbc}"
+
+download_release_asset() {
+    gh release download "$1" -R "$LAKE_JDBC_RELEASE_REPO" -p "$2" --clobber
+}
+
 ARROW_JAVA_TOOL_OPTIONS="--add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true"
 export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:+$JAVA_TOOL_OPTIONS }${ARROW_JAVA_TOOL_OPTIONS}"
 
@@ -29,7 +35,7 @@ else
 fi
 
 if [ "$TEST_SIDE" = "server" ]; then
-    curl -sSLfO "https://github.com/databendlabs/lake-jdbc/releases/download/v${TEST_VER}/${JDBC_TEST_JAR}"
+    download_release_asset "v${TEST_VER}" "${JDBC_TEST_JAR}"
 else
     cp "../../lake-jdbc/target/${JDBC_TEST_JAR}" .
 fi
@@ -38,7 +44,7 @@ if [ -z "${DATABEND_JDBC_VERSION:-}" ] || [ "$JDBC_VER" = "current" ]; then
     # test the jar built in the current workflow run
     cp "../../lake-jdbc/target/${JDBC_JAR}" .
 else
-    curl -sSLfO "https://github.com/databendlabs/lake-jdbc/releases/download/v${JDBC_VER}/${JDBC_JAR}"
+    download_release_asset "v${JDBC_VER}" "${JDBC_JAR}"
 fi
 
 if [ "$JDBC_VER" = "current" ]; then
