@@ -14,11 +14,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     services:
-      databend:
+      lake:
         image: datafuselabs/databend:nightly
         env:
-          QUERY_DEFAULT_USER: databend
-          QUERY_DEFAULT_PASSWORD: databend
+          QUERY_DEFAULT_USER: tidbcloud
+          QUERY_DEFAULT_PASSWORD: tidbcloud
           MINIO_ENABLED: true
         # options: >-
         #   --health-cmd "curl -fs http://localhost:8000/v1/health || exit 1"
@@ -46,12 +46,12 @@ jobs:
       - name: Verify Service Running
         run: |
           for i in {1..30}; do
-            if curl -fsS -u databend:databend --request POST http://localhost:8000/v1/query --header 'Content-Type:application/json' --data-raw '{"sql":"select 1"}' >/dev/null; then
+            if curl -fsS -u tidbcloud:tidbcloud --request POST http://localhost:8000/v1/query --header 'Content-Type:application/json' --data-raw '{"sql":"select 1"}' >/dev/null; then
               exit 0
             fi
             sleep 2
           done
-          cid=$(docker ps -a | awk '/databend/ {print $1; exit}')
+          cid=$(docker ps -a | awk '/datafuselabs\\/databend/ {print $1; exit}')
           if [ -n "${cid}" ]; then
             docker logs "${cid}"
           fi
@@ -60,5 +60,5 @@ jobs:
       - name: Run Maven clean deploy with release profile
         run: mvn test -DexcludedGroups=MULTI_HOST,FLAKY
         env:
-          DATABEND_JDBC_TEST_EXTRA_QUERY: presign=off
+          LAKE_JDBC_TEST_EXTRA_QUERY: presign=off
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

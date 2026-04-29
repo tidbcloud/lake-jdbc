@@ -24,8 +24,8 @@ CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdou
 cd "$original_dir"
 
 TEST_SIDE=${TEST_SIDE:-server}
-TEST_VER=${DATABEND_JDB_TEST_VERSION:-$CURRENT_VERSION}
-JDBC_VER=${DATABEND_JDBC_VERSION:-$CURRENT_VERSION}
+TEST_VER=${LAKE_JDBC_TEST_VERSION:-$CURRENT_VERSION}
+JDBC_VER=${LAKE_JDBC_VERSION:-$CURRENT_VERSION}
 
 JDBC_TEST_JAR="lake-jdbc-${TEST_VER}-tests.jar"
 if [ "$JDBC_VER" = "current" ]; then
@@ -40,7 +40,7 @@ else
     cp "../../lake-jdbc/target/${JDBC_TEST_JAR}" .
 fi
 
-if [ -z "${DATABEND_JDBC_VERSION:-}" ] || [ "$JDBC_VER" = "current" ]; then
+if [ -z "${LAKE_JDBC_VERSION:-}" ] || [ "$JDBC_VER" = "current" ]; then
     # test the jar built in the current workflow run
     cp "../../lake-jdbc/target/${JDBC_JAR}" .
 else
@@ -48,8 +48,8 @@ else
 fi
 
 if [ "$JDBC_VER" = "current" ]; then
-    export DATABEND_JDBC_VERSION=$CURRENT_VERSION
+    export LAKE_JDBC_VERSION=$CURRENT_VERSION
 else
-    export DATABEND_JDBC_VERSION=$JDBC_VER
+    export LAKE_JDBC_VERSION=$JDBC_VER
 fi
 java -Dlogback.logger.root=INFO -cp "testng.jar:slf4j-api.jar:${JDBC_JAR}:${JDBC_TEST_JAR}:jcommander.jar:semver4j.jar" org.testng.TestNG testng.xml

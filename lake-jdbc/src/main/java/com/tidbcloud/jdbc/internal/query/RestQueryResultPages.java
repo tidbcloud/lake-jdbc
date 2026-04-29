@@ -53,7 +53,7 @@ public class RestQueryResultPages implements QueryResultPages {
     private final QueryRequestConfig requestConfig;
     private final AtomicReference<QueryResultFormat> queryResultFormat;
     private final Map<String, String> additionalHeaders;
-    private final AtomicReference<SessionState> databendSession;
+    private final AtomicReference<SessionState> sessionState;
     private final AtomicReference<QueryResults> currentResults = new AtomicReference<>(null);
     private final AtomicReference<List<QueryRowField>> currentSchema = new AtomicReference<>(null);
     private final AtomicReference<ResultPage> currentPage = new AtomicReference<>(new JsonResultPage(null));
@@ -72,7 +72,7 @@ public class RestQueryResultPages implements QueryResultPages {
         this.requestConfig = requestConfig;
         this.queryResultFormat = new AtomicReference<>(requestConfig.getQueryResultFormat());
         this.additionalHeaders = requestConfig.getAdditionalHeaders();
-        this.databendSession = new AtomicReference<>(requestConfig.getSession());
+        this.sessionState = new AtomicReference<>(requestConfig.getSession());
         this.nodeID = lastNodeID.get();
 
         Request request = buildQueryRequest(query, requestConfig);
@@ -114,7 +114,7 @@ public class RestQueryResultPages implements QueryResultPages {
         }
         url = url.newBuilder().encodedPath(QUERY_PATH).build();
         Request.Builder builder = prepareRequest(url, this.additionalHeaders, currentFormat);
-        SessionState session = databendSession.get();
+        SessionState session = sessionState.get();
         if (session != null && session.getNeedSticky()) {
             builder.addHeader(QueryRequestConfig.X_DATABEND_STICKY_NODE, nodeID);
         }
@@ -207,7 +207,7 @@ public class RestQueryResultPages implements QueryResultPages {
         nodeID = results.getNodeId();
         SessionState session = results.getSession();
         if (session != null) {
-            databendSession.set(session);
+            sessionState.set(session);
             if (this.onSessionStateUpdate != null) {
                 this.onSessionStateUpdate.accept(session);
             }
@@ -270,7 +270,7 @@ public class RestQueryResultPages implements QueryResultPages {
 
     @Override
     public SessionState getSession() {
-        return databendSession.get();
+        return sessionState.get();
     }
 
     @Override

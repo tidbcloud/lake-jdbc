@@ -288,8 +288,8 @@ public class TestLakeDriverUri {
         Properties props = new Properties();
         // set session settings
         props.setProperty("session_settings", "max_threads=1,query_tag=tag1");
-        props.setProperty("user", "databend");
-        props.setProperty("password", "databend");
+        props.setProperty("user", Utils.getUsername());
+        props.setProperty("password", Utils.getPassword());
         try (Connection connection = Utils.createConnection("default", props)) {
             Statement statement = connection.createStatement();
             statement.execute("show settings");

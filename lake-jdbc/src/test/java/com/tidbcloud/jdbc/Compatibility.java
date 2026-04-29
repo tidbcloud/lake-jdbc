@@ -33,14 +33,14 @@ public class Compatibility {
     public static Capability serverCapability = serverVersion==null? new Capability(): Capability.fromServerVersion(serverVersion);
 
     private static Semver getDriverVersion() {
-        String env = System.getenv("DATABEND_JDBC_VERSION");
+        String env = System.getenv("LAKE_JDBC_VERSION");
         if (env == null || "current".equalsIgnoreCase(env)) {
             return null;
         }
         return new Semver(env);
     }
     private static Semver getServerVersion() {
-        String env = System.getenv("DATABEND_QUERY_VERSION");
+        String env = System.getenv("LAKE_QUERY_VERSION");
         if (env == null || "nightly".equals(env)) {
             return null;
         }

@@ -38,7 +38,7 @@ public interface LakeConnectionExtension {
     void uploadStream(String stageName, String destPrefix, InputStream inputStream, String destFileName, long fileSize, boolean compressData) throws SQLException;
 
     /**
-     * Download a file from the databend internal stage, the data would be downloaded as one file with no split.
+     * Download a file from the Lake internal stage; the data is downloaded as a single file with no split.
      *
      * @param stageName the stage which contains the file
      * @param sourceFileName the file name in the stage

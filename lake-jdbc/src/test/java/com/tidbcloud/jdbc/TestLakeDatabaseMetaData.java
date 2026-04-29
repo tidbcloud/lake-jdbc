@@ -96,8 +96,8 @@ public class TestLakeDatabaseMetaData {
             DatabaseMetaData metaData = c.getMetaData();
             String url = metaData.getURL();
             String expected = "jdbc:lake://http://localhost:" + Utils.port;
-            String testExtraQuery = System.getenv("DATABEND_JDBC_TEST_EXTRA_QUERY");
-            String queryResultFormat = System.getenv("DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT");
+            String testExtraQuery = System.getenv("LAKE_JDBC_TEST_EXTRA_QUERY");
+            String queryResultFormat = System.getenv("LAKE_JDBC_TEST_QUERY_RESULT_FORMAT");
             if (queryResultFormat != null && !queryResultFormat.trim().isEmpty()) {
                 expected += "?query_result_format=" + queryResultFormat.trim().toLowerCase();
             }
@@ -143,7 +143,7 @@ public class TestLakeDatabaseMetaData {
             throws Exception {
         try (Connection connection = Utils.createConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
-            Assert.assertTrue(metaData.getUserName().contains("databend"));
+            Assert.assertTrue(metaData.getUserName().contains("tidbcloud"));
         }
     }
 

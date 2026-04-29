@@ -536,7 +536,7 @@ public class LakeConnection implements Connection, LakeConnectionExtension {
             while (r.next()) {
             }
         } catch (SQLException e) {
-            throw new LakeFailedToPingException(String.format("failed to ping databend server: %s", e.getMessage()));
+            throw new LakeFailedToPingException(String.format("failed to ping Lake server: %s", e.getMessage()));
         }
     }
     QueryResultPages startQuery(String sql) throws SQLException {
@@ -574,7 +574,7 @@ public class LakeConnection implements Connection, LakeConnectionExtension {
     @Override
     public int loadStreamToTable(String sql, InputStream inputStream, long fileSize,  LoadMethod loadMethod) throws SQLException {
         if (!this.sessionHandle.supportsStreamingLoad()) {
-            throw new SQLException("please upgrade databend-query to >1.2.781 to use loadStreamToTable, current version=" + this.sessionHandle.getServerVersion());
+            throw new SQLException("please upgrade Lake server to >1.2.781 to use loadStreamToTable, current version=" + this.sessionHandle.getServerVersion());
         }
 
         if (!sql.contains("@_databend_load")) {

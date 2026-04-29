@@ -23,7 +23,7 @@ public class LoadToTableFromStream {
         String path = "@stage1/data_set1/data1";
 
         String url = "jdbc:lake://localhost:8000";
-        try(Connection conn = DriverManager.getConnection(url, "databend", "databend");
+        try(Connection conn = DriverManager.getConnection(url, "tidbcloud", "tidbcloud");
             Statement stmt = conn.createStatement())  {
 
             // upload
@@ -32,7 +32,7 @@ public class LoadToTableFromStream {
             LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
             lakeConnection.uploadStream(stageName, prefix, inputStream, fileName, fileSize, false);
 
-            // https://docs.databend.com/sql/sql-functions/table-functions/list-stage
+            // https://docs.tidbcloud.com/tidb-cloud/lakehouse-list-stage/
             String sql = String.format("list %s", path);
             try(ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
@@ -41,7 +41,7 @@ public class LoadToTableFromStream {
             }
 
             // copy into table
-            // https://docs.databend.com/sql/sql-commands/dml/dml-copy-into-table
+            // https://docs.tidbcloud.com/tidb-cloud/lakehouse-copy-into-table/
             sql = String.format("copy into table1 from %s file_format =(type=csv) purge=true", path);
             try(ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {

@@ -1,7 +1,7 @@
 x-query-base: &query-base
-  image: docker.io/datafuselabs/databend-query:${DATABEND_QUERY_VERSION:-nightly}
+  image: docker.io/datafuselabs/databend-query:${LAKE_QUERY_VERSION:-nightly}
   volumes:
-    - ./config/databend-query-node-1.toml:/conf.toml:ro
+    - ./config/lake-query-node-1.toml:/conf.toml:ro
   command: -c /conf.toml
   environment:
     - QUERY_DATABEND_ENTERPRISE_LICENSE
@@ -26,9 +26,9 @@ services:
     volumes:
       - ./data:/data
   meta:
-    image: docker.io/datafuselabs/databend-meta:${DATABEND_META_VERSION:-nightly}
+    image: docker.io/datafuselabs/databend-meta:${LAKE_META_VERSION:-nightly}
     volumes:
-      - ./config/databend-meta-node-1.toml:/conf.toml:ro
+      - ./config/lake-meta-node-1.toml:/conf.toml:ro
     command: -c /conf.toml
     ports:
       - "28101:28101"

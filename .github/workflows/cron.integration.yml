@@ -37,7 +37,7 @@ jobs:
         run: mvn test -DexcludedGroups=FLAKY
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          DATABEND_TEST_CONN_PORT: 8000
+          LAKE_TEST_CONN_PORT: 8000
 
   notify:
     if: failure()
@@ -54,7 +54,7 @@ jobs:
             const body = {
               msg_type: 'text',
               content: {
-                text: '⚠️ Databend JDBC Integration Tests Failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+                text: '⚠️ TiDB Cloud Lake JDBC integration tests failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
               }
             }
             const response = await fetch(process.env.WEBHOOK_URL, {

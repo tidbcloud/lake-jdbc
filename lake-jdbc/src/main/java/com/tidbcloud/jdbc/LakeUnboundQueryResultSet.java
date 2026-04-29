@@ -12,7 +12,7 @@ import java.util.Optional;
  * We create a new ResultSet class constructed directly from fixed values or pre-query combinations of data.
  * This class is created to do some specific processing on some implementations of the DatabaseMetaData interface.
  * <p>
- * Since some of the queries returned from databend will be some different from the jdbc standard,
+ * Since some of the queries returned from Lake will be somewhat different from the JDBC standard,
  * so that we need to make some modifications to the types, values, etc. after the returned results.
  * The actual returned datas from the interface is a new ResultSet.
  */

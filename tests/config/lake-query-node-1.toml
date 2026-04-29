@@ -1,5 +1,5 @@
 # Usage:
-# databend-query -c databend_query_config_spec.toml
+# lake-query -c lake_query_config_spec.toml
 
 [query]
 max_active_sessions = 256
@@ -49,10 +49,10 @@ name = "root"
 auth_type = "no_password"
 
 [[query.users]]
-name = "databend"
+name = "tidbcloud"
 auth_type = "double_sha1_password"
-# echo -n "databend" | sha1sum | cut -d' ' -f1 | xxd -r -p | sha1sum
-auth_string = "3081f32caef285c232d066033c89a78d88a6d8a5"
+# echo -n "tidbcloud" | sha1sum | cut -d' ' -f1 | xxd -r -p | sha1sum
+auth_string = "695d6b914efc368b03fcf04a8708d899a5f49845"
 
 # This for test
 [[query.udfs]]
@@ -68,10 +68,10 @@ level = "INFO"
 
 [log.file]
 format = "text"
-dir = "./.databend/logs_1"
+dir = "./.lake/logs_1"
 
 [meta]
-# It is a list of `grpc_api_advertise_host:<grpc-api-port>` of databend-meta config
+# It is a list of `grpc_api_advertise_host:<grpc-api-port>` from the meta config
 endpoints = ["meta:9191"]
 username = "root"
 password = "root"
@@ -83,7 +83,7 @@ auto_sync_interval = 60
 type = "s3"
 
 [storage.s3]
-bucket = "databend"
+bucket = "lake"
 endpoint_url = "http://minio:9000"
 #endpoint_url = "http://localhost:9000"
 access_key_id = "minioadmin"
@@ -96,7 +96,7 @@ data_cache_storage = "none"
 
 [cache.disk]
 # cache path
-path = "./.databend/_cache"
+path = "./.lake/_cache"
 # max bytes of cached data 20G
 max_bytes = 21474836480
 

@@ -74,7 +74,7 @@ abstract class AbstractLakeResultSet implements ResultSet {
     private final AtomicLong currentRowNumber = new AtomicLong();
     private final AtomicBoolean wasNull = new AtomicBoolean();
     private final Map<String, Integer> fieldMap;
-    private final List<LakeColumnInfo> databendColumnInfoList;
+    private final List<LakeColumnInfo> columnInfoList;
     private final ResultSetMetaData resultSetMetaData;
     private final ZoneId resultTimeZone;
     private final boolean isResultTimeZoneFromServer;
@@ -84,9 +84,9 @@ abstract class AbstractLakeResultSet implements ResultSet {
     AbstractLakeResultSet(Optional<Statement> statement, List<QueryRowField> schema, ResultCursor results, Map<String, String> resultSetting, String queryId) {
         this.statement = requireNonNull(statement, "statement is null");
         this.fieldMap = getFieldMap(schema);
-        this.databendColumnInfoList = getColumnInfo(schema);
+        this.columnInfoList = getColumnInfo(schema);
         this.results = requireNonNull(results, "results is null");
-        this.resultSetMetaData = new LakeResultSetMetaData(databendColumnInfoList);
+        this.resultSetMetaData = new LakeResultSetMetaData(columnInfoList);
         ZoneId timeZone = TimeZone.getDefault().toZoneId();
         boolean timeZoneFromServer = false;
         if (resultSetting != null) {
@@ -765,8 +765,8 @@ abstract class AbstractLakeResultSet implements ResultSet {
         if (value == null) {
             return null;
         }
-        LakeRawType databendRawType = this.databendColumnInfoList.get(columnIndex - 1).getType();
-        if (LakeRawType.startsWithIgnoreCase(databendRawType.getType(), LakeTypes.INTERVAL)) {
+        LakeRawType rawType = this.columnInfoList.get(columnIndex - 1).getType();
+        if (LakeRawType.startsWithIgnoreCase(rawType.getType(), LakeTypes.INTERVAL)) {
             if (value instanceof IntervalValue) {
                 return ((IntervalValue) value).asDuration();
             }
@@ -1785,7 +1785,7 @@ abstract class AbstractLakeResultSet implements ResultSet {
             return null;
         }
 
-        LakeRawType databendRawType = this.databendColumnInfoList.get(columnIndex - 1).getType();
+        LakeRawType rawType = this.columnInfoList.get(columnIndex - 1).getType();
 
         if (type == LocalDate.class) {
             if (value instanceof Date) {
@@ -1799,11 +1799,11 @@ abstract class AbstractLakeResultSet implements ResultSet {
         }
 
         if (type == OffsetDateTime.class) {
-            return type.cast(getOffsetDateTimeNotNull(value, databendRawType));
+            return type.cast(getOffsetDateTimeNotNull(value, rawType));
         }
 
         if (type == ZonedDateTime.class) {
-            return type.cast(getZonedDateTimeNotNull(value, databendRawType));
+            return type.cast(getZonedDateTimeNotNull(value, rawType));
         }
 
         if (type == Duration.class) {
@@ -1812,7 +1812,7 @@ abstract class AbstractLakeResultSet implements ResultSet {
                 return null;
             }
             if (!(intervalValue instanceof Duration)) {
-                throw new SQLDataException(invalidColumnType(databendRawType, "Duration"));
+                throw new SQLDataException(invalidColumnType(rawType, "Duration"));
             }
             return type.cast(intervalValue);
         }

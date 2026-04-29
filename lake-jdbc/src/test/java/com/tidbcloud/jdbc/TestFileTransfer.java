@@ -199,9 +199,9 @@ public class TestFileTransfer {
             statement.execute(String.format("create or replace database %s", dbName));
             statement.execute(String.format("use %s", dbName));
             statement.execute("create or replace table test_load(i int, a Variant, b string)");
-            LakeConnection databendConnection = connection.unwrap(LakeConnection.class);
+            LakeConnection lakeConnection = connection.unwrap(LakeConnection.class);
             String sql = "insert into test_load from @_databend_load file_format=(type=csv)";
-            int nUpdate = databendConnection.loadStreamToTable(sql, fileInputStream, f.length(), LakeConnection.LoadMethod.valueOf(method));
+            int nUpdate = lakeConnection.loadStreamToTable(sql, fileInputStream, f.length(), LakeConnection.LoadMethod.valueOf(method));
             Assert.assertEquals(nUpdate, 10);
             fileInputStream.close();
             ResultSet r = statement.executeQuery("SELECT * FROM test_load");
@@ -224,9 +224,9 @@ public class TestFileTransfer {
         }
 
         try (Connection connection = Utils.createConnectionWithPresignedUrlDisable()) {
-            LakeConnection databendConnection = connection.unwrap(LakeConnection.class);
+            LakeConnection lakeConnection = connection.unwrap(LakeConnection.class);
             SQLException exception = Assert.expectThrows(SQLException.class, () ->
-                    databendConnection.loadStreamToTable(
+                    lakeConnection.loadStreamToTable(
                             "insert into test_load values (1)",
                             new ByteArrayInputStream(new byte[0]),
                             0,

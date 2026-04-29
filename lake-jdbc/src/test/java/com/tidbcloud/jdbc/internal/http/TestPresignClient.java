@@ -53,7 +53,7 @@ public class TestPresignClient {
         });
         server.start();
 
-        Path file = Files.createTempFile("databend-presign-", ".txt");
+        Path file = Files.createTempFile("lake-presign-", ".txt");
         try {
             PresignClient client = new PresignClient(new OkHttpClient());
             client.presignDownload(file.toString(), emptyHeaders(), serverUrl(server, "/download"));

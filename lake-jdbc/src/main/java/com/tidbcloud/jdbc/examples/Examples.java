@@ -13,7 +13,7 @@ class Examples {
     private static Connection createConnection()
             throws SQLException {
         String url = "jdbc:lake://localhost:8000";
-        return DriverManager.getConnection(url, "databend", "databend");
+        return DriverManager.getConnection(url, "tidbcloud", "tidbcloud");
     }
     private static final Logger logger = Logger.getLogger(Examples.class.getPackage().getName());
     public static void main(String[] args) throws SQLException {
@@ -78,4 +78,3 @@ class Examples {
         }
     }
 }
-

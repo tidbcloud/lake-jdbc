@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
-// all possible JDBC properties options currently supported by databend driver
+// all possible JDBC property options currently supported by the Lake JDBC driver
 public final class ConnectionProperties {
     public static final ConnectionProperty<String> USER = new User();
     public static final ConnectionProperty<String> PASSWORD = new Password();

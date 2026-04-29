@@ -72,8 +72,8 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
         Map<Integer, String> params = StatementUtil.extractColumnTypes(sql);
         List<LakeColumnInfo> list = params.entrySet().stream().map(entry -> {
             String type = entry.getValue();
-            LakeRawType databendRawType = new LakeRawType(type);
-            return LakeColumnInfo.of(entry.getKey().toString(), databendRawType);
+            LakeRawType rawType = new LakeRawType(type);
+            return LakeColumnInfo.of(entry.getKey().toString(), rawType);
         }).collect(Collectors.toList());
         this.paramMetaData = new LakeParameterMetaData(Collections.unmodifiableList(list), new JdbcTypeMapping());
     }
@@ -279,7 +279,7 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
     private static boolean isBatchInsert(String sql) {
         sql = sql.toLowerCase();
         Matcher matcher = INSERT_INTO_PATTERN.matcher(sql);
-        return matcher.find() && !sql.contains(DATABEND_KEYWORDS_SELECT);
+        return matcher.find() && !sql.contains(KEYWORDS_SELECT);
     }
 
     private void setValueStringNoQuote(int index, String value) {

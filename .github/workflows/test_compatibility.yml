@@ -40,7 +40,7 @@ jobs:
         working-directory: tests
         run: make up
         env:
-          DATABEND_QUERY_VERSION: ${{ matrix.server }}
+          LAKE_QUERY_VERSION: ${{ matrix.server }}
 
       - name: Build Test Jar
         run: mvn clean install -DskipTests --batch-mode --no-transfer-progress
@@ -49,9 +49,9 @@ jobs:
         working-directory: tests/compatibility
         run: bash test_compatibility.sh
         env:
-          DATABEND_JDBC_TEST_EXTRA_QUERY: presign=off
-          DATABEND_TEST_CONN_PORT: 8000
-          DATABEND_QUERY_VERSION: ${{ matrix.server }}
-          DATABEND_JDBC_VERSION: ${{ matrix.driver }}
+          LAKE_JDBC_TEST_EXTRA_QUERY: presign=off
+          LAKE_TEST_CONN_PORT: 8000
+          LAKE_QUERY_VERSION: ${{ matrix.server }}
+          LAKE_JDBC_VERSION: ${{ matrix.driver }}
           TEST_SIDE: "driver"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

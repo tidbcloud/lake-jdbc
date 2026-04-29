@@ -4,12 +4,12 @@ import java.sql.*;
 import java.util.Properties;
 
 public class Utils {
-    private static final String TEST_EXTRA_QUERY = "DATABEND_JDBC_TEST_EXTRA_QUERY";
-    private static final String TEST_QUERY_RESULT_FORMAT = "DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT";
+    private static final String TEST_EXTRA_QUERY = "LAKE_JDBC_TEST_EXTRA_QUERY";
+    private static final String TEST_QUERY_RESULT_FORMAT = "LAKE_JDBC_TEST_QUERY_RESULT_FORMAT";
 
-    static String port = System.getenv("DATABEND_TEST_CONN_PORT") != null ? System.getenv("DATABEND_TEST_CONN_PORT").trim() : "8000";
-    static String username = "databend";
-    static String password = "databend";
+    static String port = System.getenv("LAKE_TEST_CONN_PORT") != null ? System.getenv("LAKE_TEST_CONN_PORT").trim() : "8000";
+    static String username = "tidbcloud";
+    static String password = "tidbcloud";
 
     public static String baseURL() {
         return buildURL(null, null);

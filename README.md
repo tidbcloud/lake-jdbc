@@ -52,11 +52,11 @@ The default `make test` command runs `lake-jdbc` tests only.
 
 ### Run integration tests with Arrow
 
-To run tests with Arrow result pages, set `DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT=arrow`:
+To run tests with Arrow result pages, set `LAKE_JDBC_TEST_QUERY_RESULT_FORMAT=arrow`:
 
 ```shell
 cd tests
-make test DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT=arrow TEST_MVN_ARGS='-Dgroups=IT -DexcludedGroups=FLAKY'
+make test LAKE_JDBC_TEST_QUERY_RESULT_FORMAT=arrow TEST_MVN_ARGS='-Dgroups=IT -DexcludedGroups=FLAKY'
 ```
 
 When Arrow mode is enabled through `make test`, the required JVM options are added automatically:
@@ -70,7 +70,7 @@ If you run Maven directly instead of `make test`, you must set both the Arrow te
 
 ```shell
 JAVA_TOOL_OPTIONS='--add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true' \
-DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT=arrow \
+LAKE_JDBC_TEST_QUERY_RESULT_FORMAT=arrow \
 mvn -pl lake-jdbc test -Dgroups=IT -DexcludedGroups=FLAKY
 ```
 
@@ -165,7 +165,7 @@ void setObject(int parameterIndex, Object x)
 
 - TIMESTAMP_TZ and TIMESTAMP map to `OffsetDateTime`, `ZonedDateTime`, `Instant` and `LocalDateTime` (TIMESTAMP_TZ can return `OffsetDateTime` but not `ZonedDateTime`).
 - Date maps to `LocalDate`
-- When parameters do not contain a timezone, Lake uses the session timezone (not the JVM zone) when storing/returning dates on lake-jdbc ≥ 0.4.3 AND databend-query ≥1.2.844.
+- When parameters do not contain a timezone, Lake uses the session timezone (not the JVM zone) when storing/returning dates on lake-jdbc ≥ 0.4.3 AND Lake server ≥ 1.2.844.
 - Interval map to `java.time.Duration`.
 
 old Timestamp/Date are also supported, note that:
@@ -193,7 +193,7 @@ import com.tidbcloud.jdbc.LakeConnection;
 public class UnwrapExample {
     public static void main(String[] args) throws SQLException {
         try (Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000")) {
-            LakeConnection databendConnection = conn.unwrap(LakeConnection.class);
+            LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
         }
     }
 }
@@ -207,7 +207,7 @@ int loadStreamToTable(String sql, InputStream inputStream, long fileSize, LoadMe
 
 Load data from a stream directly into a table, using either a staging or streaming approach.
 
-Available with lake-jdbc >= 0.4.1 AND databend-query >= 1.2.791.
+Available with lake-jdbc >= 0.4.1 AND Lake server >= 1.2.791.
 
 **Parameters:**
 - `sql`: SQL statement with specific syntax for data loading, use special stage `_databend_load`
@@ -236,12 +236,12 @@ public class LoadStreamExample {
     public static void main(String[] args) throws SQLException {
         try (Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000");
              FileInputStream fileStream = new FileInputStream("data.csv")) {
-            LakeConnection databendConnection = conn.unwrap(LakeConnection.class);
+            LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
 
             // use special stage `_databend_load`
             String sql = "insert into my_table from @_databend_load file_format=(type=csv)";
 
-            databendConnection.loadStreamToTable(
+            lakeConnection.loadStreamToTable(
                     sql,
                     fileStream,
                     Files.size(Paths.get("data.csv")),

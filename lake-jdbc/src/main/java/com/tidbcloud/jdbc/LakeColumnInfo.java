@@ -253,20 +253,20 @@ public class LakeColumnInfo {
         Builder() {
         }
 
-        private Builder(LakeColumnInfo databendColumnInfo) {
-            this.columnName = databendColumnInfo.columnName;
-            this.columnType = databendColumnInfo.columnType;
-            this.columnLabel = databendColumnInfo.columnLabel;
-            this.type = databendColumnInfo.type;
-            this.columnDisplaySize = databendColumnInfo.columnDisplaySize;
-            this.tableName = databendColumnInfo.tableName;
-            this.schemaName = databendColumnInfo.schemaName;
-            this.catalogName = databendColumnInfo.catalogName;
-            this.scale = databendColumnInfo.scale;
-            this.columnParameterTypes = databendColumnInfo.columnParameterTypes;
-            this.signed = databendColumnInfo.signed;
-            this.currency = databendColumnInfo.currency;
-            this.nullable = databendColumnInfo.nullable;
+        private Builder(LakeColumnInfo columnInfo) {
+            this.columnName = columnInfo.columnName;
+            this.columnType = columnInfo.columnType;
+            this.columnLabel = columnInfo.columnLabel;
+            this.type = columnInfo.type;
+            this.columnDisplaySize = columnInfo.columnDisplaySize;
+            this.tableName = columnInfo.tableName;
+            this.schemaName = columnInfo.schemaName;
+            this.catalogName = columnInfo.catalogName;
+            this.scale = columnInfo.scale;
+            this.columnParameterTypes = columnInfo.columnParameterTypes;
+            this.signed = columnInfo.signed;
+            this.currency = columnInfo.currency;
+            this.nullable = columnInfo.nullable;
         }
 
 

@@ -33,12 +33,12 @@ jobs:
         working-directory: tests
         run: make up
         env:
-          DATABEND_QUERY_VERSION: ${{ matrix.version }}
+          LAKE_QUERY_VERSION: ${{ matrix.version }}
 
       - name: Test with conn to nginx
         run: mvn test -DexcludedGroups=FLAKY
         env:
-          DATABEND_JDBC_TEST_EXTRA_QUERY: presign=off
+          LAKE_JDBC_TEST_EXTRA_QUERY: presign=off
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          DATABEND_TEST_CONN_PORT: 8000
-          DATABEND_QUERY_VERSION: ${{ matrix.version }}
+          LAKE_TEST_CONN_PORT: 8000
+          LAKE_QUERY_VERSION: ${{ matrix.version }}

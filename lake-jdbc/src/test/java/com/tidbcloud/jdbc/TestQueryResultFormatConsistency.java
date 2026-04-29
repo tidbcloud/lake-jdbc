@@ -15,13 +15,13 @@ import java.util.UUID;
 
 @Test(timeOut = 10000)
 public class TestQueryResultFormatConsistency {
-    private static final String TEST_QUERY_RESULT_FORMAT = "DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT";
+    private static final String TEST_QUERY_RESULT_FORMAT = "LAKE_JDBC_TEST_QUERY_RESULT_FORMAT";
 
     @Test(groups = {"IT"})
     public void testJsonAndArrowReturnConsistentValues() throws Exception {
         String configuredFormat = System.getenv(TEST_QUERY_RESULT_FORMAT);
         if (configuredFormat == null || !"arrow".equalsIgnoreCase(configuredFormat.trim())) {
-            throw new SkipException("Set DATABEND_JDBC_TEST_QUERY_RESULT_FORMAT=arrow to run Arrow consistency checks");
+            throw new SkipException("Set LAKE_JDBC_TEST_QUERY_RESULT_FORMAT=arrow to run Arrow consistency checks");
         }
 
         String dbName = ("format_consistency_" + UUID.randomUUID()).replace("-", "").toLowerCase();

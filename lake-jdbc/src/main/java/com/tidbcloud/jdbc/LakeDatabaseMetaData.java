@@ -344,14 +344,14 @@ public class LakeDatabaseMetaData implements DatabaseMetaData {
     @Override
     public boolean supportsAlterTableWithAddColumn()
             throws SQLException {
-        // https://github.com/datafuselabs/databend/issues/9441
+        // Preserved for compatibility with an upstream metadata bug fix.
         return true;
     }
 
     @Override
     public boolean supportsAlterTableWithDropColumn()
             throws SQLException {
-        // https://github.com/datafuselabs/databend/issues/9441
+        // Preserved for compatibility with an upstream metadata bug fix.
         return true;
     }
 
@@ -916,11 +916,9 @@ public class LakeDatabaseMetaData implements DatabaseMetaData {
         return select(sql.toString());
     }
 
-    // This handles bug that existed a while, views were not included in information_schema.tables
-    // https://github.com/datafuselabs/databend/issues/16039
+    // This handles an old metadata bug where views were not included in information_schema.tables.
     private boolean checkVersionAddView() throws SQLException {
-        // the same fix for python-sdk
-        // https://github.com/databendlabs/databend-sqlalchemy/blob/3226f10e0f8b6aa85185208583977037b33ec99f/databend_sqlalchemy/databend_dialect.py#L819
+        // Mirrors the upstream Python client workaround for the same metadata issue.
         String version = getDatabaseProductVersion();
         Pattern pattern = Pattern.compile("v(\\d+)\\.(\\d+)\\.(\\d+)");
         Matcher matcher = pattern.matcher(version);
@@ -955,7 +953,7 @@ public class LakeDatabaseMetaData implements DatabaseMetaData {
     @Override
     public ResultSet getTableTypes()
             throws SQLException {
-        // Base on https://github.com/datafuselabs/databend/blob/main/src/query/storages/information-schema/src/tables_table.rs#L35
+        // Based on the upstream information_schema tables implementation.
         // We just return 3 types: TABLE(BASE TABLE), VIEW, SYSTEM TABLE(SYSTEM VIEW)
         List<QueryRowField> schema = new ArrayList<>();
         schema.add(new QueryRowField("TABLE_TYPE", new LakeRawType("String")));
