@@ -35,15 +35,25 @@ public class PresignClient {
     }
 
     private static final int MaxRetryAttempts = 20;
+    private static final int MAX_ERROR_BODY_LENGTH = 1024;
     private final OkHttpClient client;
     private static final Logger logger = Logger.getLogger(PresignClient.class.getPackage().getName());
 
-    public PresignClient(OkHttpClient client)
+    public PresignClient()
+    {
+        this(buildDefaultClient());
+    }
+
+    PresignClient(OkHttpClient client)
+    {
+        this.client = requireNonNull(client, "client is null");
+    }
+
+    private static OkHttpClient buildDefaultClient()
     {
         Logger.getLogger(OkHttpClient.class.getName()).setLevel(Level.FINEST);
-        OkHttpClient.Builder builder = client.newBuilder();
-        this.client = builder.
-                connectTimeout(600, TimeUnit.SECONDS)
+        return new OkHttpClient.Builder()
+                .connectTimeout(600, TimeUnit.SECONDS)
                 .writeTimeout(900, TimeUnit.SECONDS)
                 .readTimeout(600, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
@@ -81,7 +91,7 @@ public class PresignClient {
                         }
                     }
                     return response;
-                }).build();
+                 }).build();
     }
 
     private void uploadFromStream(InputStream inputStream, Headers headers, String presignedUrl, long fileSize)
@@ -138,16 +148,19 @@ public class PresignClient {
                 if (response.isSuccessful()) {
                     return response.body();
                 }
-                else if (response.code() == 401) {
+                String responseBody = readErrorBody(response);
+                if (response.code() == 401) {
                     throw new NonRetryablePresignFailure(
-                            "Error exeucte presign, Unauthorized user: " + response.code() + " " + response.message());
+                            "Error exeucte presign, Unauthorized user: " + response.code() + " " + response.message()
+                                    + formatErrorBody(responseBody));
                 }
                 else if (response.code() >= 503) {
                     cause = new RuntimeException("Error execute presign, service unavailable: " + response.code() + " " + response.message());
                 }
                 else if (response.code() >= 400) {
                     throw new NonRetryablePresignFailure(
-                            "Error execute presign, configuration error: " + response.code() + " " + response.message());
+                            "Error execute presign, configuration error: " + response.code() + " " + response.message()
+                                    + formatErrorBody(responseBody));
                 }
             }
             catch (SocketTimeoutException e) {
@@ -173,6 +186,23 @@ public class PresignClient {
                 }
             }
         }
+    }
+
+    private static String readErrorBody(Response response) throws IOException {
+        if (response.body() == null) {
+            return "";
+        }
+        return response.body().string();
+    }
+
+    private static String formatErrorBody(String responseBody) {
+        if (responseBody == null || responseBody.isEmpty()) {
+            return "";
+        }
+        String body = responseBody.length() > MAX_ERROR_BODY_LENGTH
+                ? responseBody.substring(0, MAX_ERROR_BODY_LENGTH) + "...(truncated)"
+                : responseBody;
+        return ", body=" + body;
     }
 
     public void presignUpload(File srcFile, InputStream inputStream, Headers headers,

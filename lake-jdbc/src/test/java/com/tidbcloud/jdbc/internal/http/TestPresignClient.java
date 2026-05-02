@@ -89,7 +89,7 @@ public class TestPresignClient {
                     client.presignDownloadStream(emptyHeaders(), serverUrl(server, "/download-stream")));
 
             Assert.assertTrue(exception.getMessage().contains("Unauthorized user"), exception.getMessage());
-            Assert.assertEquals(attempts.get(), 3);
+            Assert.assertEquals(attempts.get(), 1);
         }
         finally {
             server.stop(0);

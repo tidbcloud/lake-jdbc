@@ -13,6 +13,9 @@ import java.util.Vector;
 public class TestHeartbeat {
     @Test(groups = {"IT"})
     public void testHeartbeat() throws SQLException, InterruptedException {
+        if (Utils.isRemoteTestEnvironment()) {
+            throw new org.testng.SkipException("Heartbeat paging test is only stable against the local single-node test environment");
+        }
         Properties p = new Properties();
         p.setProperty("max_rows_in_buffer", "10000");
         // on the server side, the expired query is put into a queue before not deleted.

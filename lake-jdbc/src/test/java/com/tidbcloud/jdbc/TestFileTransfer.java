@@ -103,6 +103,9 @@ public class TestFileTransfer {
     @Test(groups = {"IT"})
     public void testFileTransfer()
             throws IOException, SQLException {
+        if (Utils.isPresignedUrlDisabled()) {
+            throw new org.testng.SkipException("Presigned upload/download is disabled for this test environment");
+        }
         String filePath = generateRandomCSV(10000);
         File f = new File(filePath);
         InputStream downloaded = null;
@@ -126,6 +129,9 @@ public class TestFileTransfer {
 
     @Test(groups = {"IT"})
     public void testFileTransferThroughAPI() throws SQLException, IOException {
+        if (Utils.isPresignedUrlDisabled()) {
+            throw new org.testng.SkipException("Presigned download is disabled for this test environment");
+        }
         String filePath = generateRandomCSV(10000);
         File f = new File(filePath);
         try (InputStream fileInputStream = Files.newInputStream(f.toPath());

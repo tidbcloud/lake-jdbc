@@ -86,23 +86,38 @@ You can download the latest version of the lake-jdbc driver [here](https://repo1
 
 ## How to use
 
+Set the connection environment variables before running the examples:
+
+```shell
+export LAKE_JDBC_URL='jdbc:lake://host:443/default?warehouse=your-warehouse&ssl=true&sslmode=enable'
+export LAKE_JDBC_USER='user'
+export LAKE_JDBC_PASSWORD='password'
+```
+
 ```java
-import java.sql.SQLException;
-import java.sql.DriverManager;
 import java.sql.Connection;
-import java.sql.Statement;
+import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 public class Main {
+    private static Connection openConnection() throws SQLException {
+        String url = System.getenv("LAKE_JDBC_URL");
+        String user = System.getenv("LAKE_JDBC_USER");
+        String password = System.getenv("LAKE_JDBC_PASSWORD");
+        return DriverManager.getConnection(url, user, password);
+    }
+
     public static void main(String[] args) throws SQLException {
-        try ( Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000", "root", "");
+        try ( Connection conn = openConnection();
               Statement statement = conn.createStatement()
             ) {
             statement.execute("SELECT number from numbers(200000) order by number");
             try(ResultSet rs = statement.getResultSet()){
                 // ** We must call `rs.next()` otherwise the query may be canceled **
                 while (rs.next()) {
-                    System.out.println(r.getInt(1));
+                    System.out.println(rs.getInt(1));
                 }
             }
         }
@@ -191,8 +206,15 @@ import java.sql.SQLException;
 import com.tidbcloud.jdbc.LakeConnection;
 
 public class UnwrapExample {
+    private static Connection openConnection() throws SQLException {
+        String url = System.getenv("LAKE_JDBC_URL");
+        String user = System.getenv("LAKE_JDBC_USER");
+        String password = System.getenv("LAKE_JDBC_PASSWORD");
+        return DriverManager.getConnection(url, user, password);
+    }
+
     public static void main(String[] args) throws SQLException {
-        try (Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000")) {
+        try (Connection conn = openConnection()) {
             LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
         }
     }
@@ -224,47 +246,42 @@ example:
 
 
 ```java
-import java.io.FileInputStream;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.ByteArrayInputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
 import com.tidbcloud.jdbc.LakeConnection;
 
 public class LoadStreamExample {
+    private static Connection openConnection() throws SQLException {
+        String url = System.getenv("LAKE_JDBC_URL") + "&presigned_url_disabled=true";
+        String user = System.getenv("LAKE_JDBC_USER");
+        String password = System.getenv("LAKE_JDBC_PASSWORD");
+        return DriverManager.getConnection(url, user, password);
+    }
+
     public static void main(String[] args) throws SQLException {
-        try (Connection conn = DriverManager.getConnection("jdbc:lake://localhost:8000");
-             FileInputStream fileStream = new FileInputStream("data.csv")) {
+        byte[] csv = "1,hello\n2,world\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String tableName = "readme_load_example";
+        try (Connection conn = openConnection();
+             Statement stmt = conn.createStatement();
+             ByteArrayInputStream fileStream = new ByteArrayInputStream(csv)) {
             LakeConnection lakeConnection = conn.unwrap(LakeConnection.class);
+            stmt.execute("create or replace table " + tableName + " (id int, value string)");
 
             // use special stage `_databend_load`
-            String sql = "insert into my_table from @_databend_load file_format=(type=csv)";
+            String sql = "insert into " + tableName + " from @_databend_load file_format=(type=csv)";
 
             lakeConnection.loadStreamToTable(
                     sql,
                     fileStream,
-                    Files.size(Paths.get("data.csv")),
+                    csv.length,
                     LakeConnection.LoadMethod.STAGE);
+            stmt.executeQuery("select count(*) from " + tableName);
         }
     }
 }
-```
-
-### method `uploadStream` and `downloadStream`
-
-Upload a `InputStream` as a single file in the stage.
-
-the upload method is determined by connection parameter `presigned_url_disabled`.
-
-```java
-void uploadStream(String stageName, String destPrefix, InputStream inputStream, String destFileName, long fileSize, boolean compressData) throws SQLException;
-```
-
-Download a single file in the stage as `InputStream`
-
-```
-InputStream downloadStream(String stageName, String filePathInStage) throws SQLException;
 ```
 
 ### Use Arrow Result Format
@@ -273,8 +290,14 @@ By default, the driver fetches query results in JSON format. To enable Arrow ove
 `query_result_format=arrow` to the JDBC URL:
 
 ```java
-String url = "jdbc:lake://localhost:8000/default?query_result_format=arrow";
-Connection conn = DriverManager.getConnection(url, "root", "");
+String url = System.getenv("LAKE_JDBC_URL");
+if (!url.contains("query_result_format=")) {
+    url = url + (url.contains("?") ? "&" : "?") + "query_result_format=arrow";
+}
+Connection conn = DriverManager.getConnection(
+    url,
+    System.getenv("LAKE_JDBC_USER"),
+    System.getenv("LAKE_JDBC_PASSWORD"));
 ```
 
 Arrow mode is intended for query result fetching. Internal control queries still use JSON when needed.

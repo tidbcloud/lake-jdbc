@@ -402,7 +402,7 @@ public class TestPrepareStatement {
         }
     }
 
-    @Test(groups = "UNIT")
+    @Test(groups = "IT")
     public void shouldBuildStageAttachmentWithFileFormatOptions() throws SQLException {
         try (Connection conn = Utils.createConnection()) {
             StageAttachment stageAttachment = LakePreparedStatement.buildStateAttachment((LakeConnection) conn,
@@ -415,7 +415,7 @@ public class TestPrepareStatement {
         }
     }
 
-    @Test(groups = "UNIT")
+    @Test(groups = "IT")
     public void shouldBuildStageAttachmentWithBinaryFormatOption() throws SQLException {
         Properties props = new Properties();
         props.setProperty("user", Utils.getUsername());
@@ -451,7 +451,7 @@ public class TestPrepareStatement {
         }
     }
 
-    @Test(groups = {"UNIT"})
+    @Test(groups = {"IT"})
     public void testBinaryFormatOptionIsVisibleWhenBuildingAttachment() throws SQLException {
         Properties props = new Properties();
         props.setProperty("user", Utils.getUsername());
