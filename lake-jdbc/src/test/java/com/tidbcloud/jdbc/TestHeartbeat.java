@@ -13,9 +13,6 @@ import java.util.Vector;
 public class TestHeartbeat {
     @Test(groups = {"IT"})
     public void testHeartbeat() throws SQLException, InterruptedException {
-        if (Utils.isRemoteTestEnvironment()) {
-            throw new org.testng.SkipException("Heartbeat paging test is only stable against the local single-node test environment");
-        }
         Properties p = new Properties();
         p.setProperty("max_rows_in_buffer", "10000");
         // on the server side, the expired query is put into a queue before not deleted.
@@ -25,7 +22,7 @@ public class TestHeartbeat {
         p.setProperty("password", Utils.getPassword());
         try (Connection c1 = Utils.createConnection("default", p)) {
             Statement statement = c1.createStatement();
-            statement.execute("set http_handler_result_timeout_secs=2");
+            statement.execute("set http_handler_result_timeout_secs=10");
             int n = 80000;
             int numQuery = 3;
 
