@@ -62,17 +62,9 @@ public class PresignClient {
                     Request request = chain.request();
                     boolean oneShot = request.body() != null && request.body().isOneShot();
                     int retryCount = 0;
-                    Response response = null;
                     while (retryCount < 3) {
                         try {
-                            response = chain.proceed(request);
-                            if (response.isSuccessful()) {
-                                return response;
-                            }
-                            if (oneShot) {
-                                return response;
-                            }
-                            response.close();
+                            return chain.proceed(request);
                         }
                         catch (IOException e) {
                             if (retryCount == 2 || oneShot) {
@@ -90,8 +82,8 @@ public class PresignClient {
                             throw new IOException("Upload interrupted", e);
                         }
                     }
-                    return response;
-                 }).build();
+                    throw new IOException("Upload failed after retries");
+                }).build();
     }
 
     private void uploadFromStream(InputStream inputStream, Headers headers, String presignedUrl, long fileSize)
