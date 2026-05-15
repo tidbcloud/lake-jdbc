@@ -426,7 +426,7 @@ final class LakeDriverUri {
             String password = PASSWORD.getValue(properties).orElse("");
             builder.addInterceptor(basicAuthInterceptor(USER.getValue(properties).orElse(""), password));
             if (useSecureConnection || ENABLE_STR.equals(sslmode)) {
-                setupInsecureSsl(builder);
+                setupSsl(builder);
             }
             if (ACCESS_TOKEN.getValue(properties).isPresent()) {
                 builder.addInterceptor(tokenAuth(ACCESS_TOKEN.getValue(properties).get()));
