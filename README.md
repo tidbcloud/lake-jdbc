@@ -1,4 +1,4 @@
-# TiDB Cloud Lake JDBC
+# TiDB Cloud Lake JDBC 0
 
 ![Apache License 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 [![lake-jdbc](https://img.shields.io/maven-central/v/com.tidbcloud/lake-jdbc?style=flat-square)](https://central.sonatype.dev/artifact/com.tidbcloud/lake-jdbc/0.0.1)
