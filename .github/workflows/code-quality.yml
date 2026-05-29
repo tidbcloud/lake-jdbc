@@ -35,7 +35,11 @@ jobs:
 
       - name: Report Checkstyle results
         uses: jwgmeligmeyling/checkstyle-github-action@master
-        if: always()
+        # GITHUB_TOKEN is read-only for PRs from forks, so this reporting step
+        # cannot create a check run there ("Resource not accessible by
+        # integration"). Skip it for fork PRs and never let it fail the job.
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
         with:
           path: '**/checkstyle-result.xml'
           token: ${{ secrets.GITHUB_TOKEN }}
