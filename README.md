@@ -1,7 +1,7 @@
 # TiDB Cloud Lake JDBC
 
 ![Apache License 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
-[![lake-jdbc](https://img.shields.io/maven-central/v/com.tidbcloud/lake-jdbc?style=flat-square)](https://central.sonatype.dev/artifact/com.tidbcloud/lake-jdbc/0.0.1)
+[![lake-jdbc](https://img.shields.io/maven-central/v/com.tidbcloud/lake-jdbc?style=flat-square)](https://central.sonatype.com/artifact/com.tidbcloud/lake-jdbc)
 
 ## Highlights
 
@@ -80,9 +80,7 @@ CI note:
 
 ### Download jar from maven central
 
-```shell
 You can download the latest version of the lake-jdbc driver [here](https://repo1.maven.org/maven2/com/tidbcloud/lake-jdbc/).
-```
 
 ## How to use
 
