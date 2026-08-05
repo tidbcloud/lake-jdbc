@@ -2,6 +2,7 @@ package com.tidbcloud.jdbc.internal.binding;
 
 import de.siegmar.fastcsv.writer.CsvWriter;
 import de.siegmar.fastcsv.writer.LineDelimiter;
+import de.siegmar.fastcsv.writer.QuoteStrategy;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -106,7 +107,11 @@ public class BatchInsertUtils {
         }
         // save values to csv file
         try (FileWriter pw = new FileWriter(file)) {
-            CsvWriter w = CsvWriter.builder().quoteCharacter('"').lineDelimiter(LineDelimiter.LF).build(pw);
+            CsvWriter w = CsvWriter.builder()
+                    .quoteCharacter('"')
+                    .quoteStrategy(QuoteStrategy.EMPTY)
+                    .lineDelimiter(LineDelimiter.LF)
+                    .build(pw);
             for (String[] row : values) {
                 w.writeRow(row);
             }

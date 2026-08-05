@@ -25,7 +25,7 @@ Add following code block as a dependency
 <dependency>
     <groupId>com.tidbcloud</groupId>
     <artifactId>lake-jdbc</artifactId>
-    <version>0.4.8</version>
+    <version>0.4.9</version>
 </dependency>
 ```
 
