@@ -8,12 +8,15 @@ import com.tidbcloud.jdbc.internal.http.JsonCodec;
 import com.tidbcloud.jdbc.internal.http.JsonResponse;
 import com.tidbcloud.jdbc.internal.session.QueryRequestConfig;
 import com.tidbcloud.jdbc.internal.session.SessionState;
+import okhttp3.Call;
+import okhttp3.Callback;
 import okhttp3.Headers;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.apache.arrow.compression.CommonsCompressionFactory;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
@@ -305,10 +308,17 @@ public class RestQueryResultPages implements QueryResultPages {
         HttpUrl url = HttpUrl.get(this.host);
         url = url.newBuilder().encodedPath(path).build();
         Request request = prepareRequest(url, this.additionalHeaders, QueryResultFormat.JSON).get().build();
-        try {
-            httpClient.newCall(request).execute().close();
-        } catch (IOException ignored) {
-        }
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                // Finalization is best effort and must not fail ResultSet.close().
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) {
+                response.close();
+            }
+        });
     }
 
     private static boolean isArrow(MediaType mediaType) {

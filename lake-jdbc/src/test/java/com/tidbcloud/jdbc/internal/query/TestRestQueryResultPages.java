@@ -16,8 +16,14 @@ import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 @Test(timeOut = 10000)
 public class TestRestQueryResultPages {
@@ -358,6 +364,114 @@ public class TestRestQueryResultPages {
                     exception.getCause().getMessage());
         }
         finally {
+            server.stop(0);
+        }
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testCloseSendsFinalAsynchronouslyAndOnlyOnce() throws Exception {
+        AtomicInteger finalRequests = new AtomicInteger();
+        CountDownLatch finalStarted = new CountDownLatch(1);
+        CountDownLatch allowFinalResponse = new CountDownLatch(1);
+        CountDownLatch finalCompleted = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/query", exchange -> {
+            try {
+                if ("POST".equals(exchange.getRequestMethod())) {
+                    byte[] payload = queryResponse("qid-close", null, null).getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, payload.length);
+                    exchange.getResponseBody().write(payload);
+                    return;
+                }
+
+                Assert.assertEquals(exchange.getRequestURI().getPath(), "/v1/query/final");
+                finalRequests.incrementAndGet();
+                finalStarted.countDown();
+                allowFinalResponse.await(5, SECONDS);
+                exchange.sendResponseHeaders(200, -1);
+                finalCompleted.countDown();
+            }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        ExecutorService closeExecutor = Executors.newSingleThreadExecutor();
+
+        try {
+            RestQueryResultPages pages = new RestQueryResultPages(
+                    new OkHttpClient(),
+                    "select 1",
+                    requestConfig(serverBaseUrl(server)),
+                    null,
+                    new AtomicReference<>());
+
+            Future<?> closeFuture = closeExecutor.submit(pages::close);
+            Assert.assertTrue(finalStarted.await(5, SECONDS), "final request was not received");
+            closeFuture.get(1, SECONDS);
+
+            pages.close();
+            Assert.assertEquals(finalRequests.get(), 1);
+
+            allowFinalResponse.countDown();
+            Assert.assertTrue(finalCompleted.await(5, SECONDS), "final request did not complete");
+        }
+        finally {
+            allowFinalResponse.countDown();
+            closeExecutor.shutdownNow();
+            server.stop(0);
+        }
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testCloseIgnoresFinalRequestFailure() throws Exception {
+        AtomicInteger finalAttempts = new AtomicInteger();
+        CountDownLatch finalAttempted = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/query", exchange -> {
+            try {
+                byte[] payload = queryResponse("qid-final-failure", null, null).getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, payload.length);
+                exchange.getResponseBody().write(payload);
+            }
+            finally {
+                exchange.close();
+            }
+        });
+        server.start();
+
+        OkHttpClient client = new OkHttpClient.Builder()
+                .addInterceptor((Interceptor) chain -> {
+                    if ("/v1/query/final".equals(chain.request().url().encodedPath())) {
+                        finalAttempts.incrementAndGet();
+                        finalAttempted.countDown();
+                        throw new IOException("final request failed");
+                    }
+                    return chain.proceed(chain.request());
+                })
+                .build();
+
+        try {
+            RestQueryResultPages pages = new RestQueryResultPages(
+                    client,
+                    "select 1",
+                    requestConfig(serverBaseUrl(server)),
+                    null,
+                    new AtomicReference<>());
+
+            pages.close();
+            Assert.assertTrue(finalAttempted.await(5, SECONDS), "final request was not attempted");
+            pages.close();
+            Assert.assertEquals(finalAttempts.get(), 1);
+        }
+        finally {
+            client.dispatcher().executorService().shutdownNow();
+            client.connectionPool().evictAll();
             server.stop(0);
         }
     }
