@@ -33,6 +33,32 @@ public class TestPresignClient {
     }
 
     @Test(groups = {"UNIT"})
+    public void testPresignClientKeepsDefaultTlsVerification() {
+        OkHttpClient presignClient = new PresignClient().clientForTesting();
+        OkHttpClient defaultClient = new OkHttpClient();
+        OkHttpClient.Builder jdbcBuilder = new OkHttpClient.Builder();
+        OkHttpUtils.setupSsl(jdbcBuilder);
+        OkHttpClient jdbcClient = jdbcBuilder.build();
+
+        Assert.assertSame(presignClient.hostnameVerifier(), defaultClient.hostnameVerifier());
+        Assert.assertSame(presignClient.hostnameVerifier(), jdbcClient.hostnameVerifier());
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testTlsConfigurationIsReused() {
+        OkHttpClient.Builder firstBuilder = new OkHttpClient.Builder();
+        OkHttpClient.Builder secondBuilder = new OkHttpClient.Builder();
+        OkHttpUtils.setupSsl(firstBuilder);
+        OkHttpUtils.setupSsl(secondBuilder);
+        OkHttpClient first = firstBuilder.build();
+        OkHttpClient second = secondBuilder.build();
+
+        Assert.assertSame(first.sslSocketFactory(), second.sslSocketFactory());
+        Assert.assertSame(first.x509TrustManager(), second.x509TrustManager());
+        Assert.assertSame(first.hostnameVerifier(), second.hostnameVerifier());
+    }
+
+    @Test(groups = {"UNIT"})
     public void testPresignDownloadRetriesServiceUnavailable() throws Exception {
         AtomicInteger attempts = new AtomicInteger();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
