@@ -129,6 +129,7 @@ public class TestArrowResultPage {
         rootAllocator.close();
     }
 
+    @Test(groups = {"UNIT_ARROW"})
     public void testArrowSchemaMapsToJdbcTypes() throws Exception {
         Field intField = new Field("n", FieldType.notNullable(new ArrowType.Int(32, true)), null);
         Field dateField = new Field("d", FieldType.nullable(new ArrowType.Date(DateUnit.DAY)), null);
@@ -136,8 +137,11 @@ public class TestArrowResultPage {
 
         List<QueryRowField> fields = ArrowResultPage.schemaToFields(new org.apache.arrow.vector.types.pojo.Schema(Arrays.asList(intField, dateField, tsField)));
         Assert.assertEquals(fields.get(0).getDataType().getType(), "Int32");
-        Assert.assertEquals(fields.get(1).getDataType().getType(), "Nullable(Date)");
-        Assert.assertEquals(fields.get(2).getDataType().getType(), "Nullable(Timestamp)");
+        Assert.assertFalse(fields.get(0).getDataType().isNullable());
+        Assert.assertEquals(fields.get(1).getDataType().getType(), "Date");
+        Assert.assertTrue(fields.get(1).getDataType().isNullable());
+        Assert.assertEquals(fields.get(2).getDataType().getType(), "Timestamp");
+        Assert.assertTrue(fields.get(2).getDataType().isNullable());
     }
 
     private static void closeAllocator(AutoCloseable closeable) throws Exception {
