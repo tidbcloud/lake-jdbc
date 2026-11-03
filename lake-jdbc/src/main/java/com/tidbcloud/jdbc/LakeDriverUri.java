@@ -5,6 +5,7 @@ import com.tidbcloud.jdbc.internal.session.LakeSessionCookieJar;
 import com.tidbcloud.jdbc.internal.session.SessionHandleConfig;
 import com.tidbcloud.jdbc.internal.session.SessionState;
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import com.google.common.net.HostAndPort;
 import okhttp3.Cookie;
@@ -16,6 +17,7 @@ import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.sql.SQLException;
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +44,13 @@ final class LakeDriverUri {
     private static final String JDBC_URL_START = JDBC_URL_PREFIX + "lake://";
     private static final Splitter QUERY_SPLITTER = Splitter.on('&').omitEmptyStrings();
     private static final Splitter ARG_SPLITTER = Splitter.on('=').limit(2);
+    private static final char[] AUTHORITY_DELIMITERS = {'/', '?', '#'};
+    /**
+     * URL query parameters that carry a credential. They are parsed into the connection properties
+     * and must never be retained in the canonical base URI.
+     */
+    private static final List<String> CREDENTIAL_QUERY_PARAMETERS =
+            ImmutableList.of("password", "accesstoken", "access_token", "token");
     private static final int DEFAULT_HTTPS_PORT = 443;
     private static final int DEFAULT_HTTP_PORT = 8000;
     private static final Logger logger = Logger.getLogger(LakeDriverUri.class.getPackage().getName());
@@ -154,12 +163,17 @@ final class LakeDriverUri {
         } else {
             scheme = "http";
         }
+        // The canonical base URI is used for every REST request, for DatabaseMetaData.getURL() and
+        // for exception text. Credentials must not survive into it: they have already been parsed
+        // into the connection properties, and keeping them here replays ?password=... / ?accesstoken=...
+        // on every request and exposes them to server access logs and host application logs.
+        String query = queryWithoutCredentials(uri.getQuery());
         int finalPort = -1;
         try {
             HostAndPort hostAndPort = HostAndPort.fromString(authority);
             if (hostAndPort.hasPort()) {
                 finalPort = hostAndPort.getPort();
-                return new URI(scheme, uri.getUserInfo(), uri.getHost(), finalPort, uri.getPath(), uri.getQuery(), uri.getFragment());
+                return new URI(scheme, null, uri.getHost(), finalPort, uri.getPath(), query, uri.getFragment());
             }
         } catch (Exception e) {
             // ignore
@@ -169,14 +183,40 @@ final class LakeDriverUri {
         }
         try {
 
-            return new URI(scheme, uri.getUserInfo(), uri.getHost(), finalPort, uri.getPath(), uri.getQuery(), uri.getFragment());
+            return new URI(scheme, null, uri.getHost(), finalPort, uri.getPath(), query, uri.getFragment());
         } catch (URISyntaxException e) {
             throw new SQLException("Invalid URI: " + uri, e);
         }
     }
 
+    private static String queryWithoutCredentials(String query) {
+        if (isNullOrEmpty(query)) {
+            return query;
+        }
+        List<String> kept = new ArrayList<>();
+        for (String queryArg : QUERY_SPLITTER.split(query)) {
+            List<String> parts = ARG_SPLITTER.splitToList(queryArg);
+            if (parts.isEmpty()
+                    || !CREDENTIAL_QUERY_PARAMETERS.contains(parts.get(0).toLowerCase(Locale.US))) {
+                kept.add(queryArg);
+            }
+        }
+        return kept.isEmpty() ? null : String.join("&", kept);
+    }
+
     private static String tryParseUriUserPassword(String url, Map<String, String> properties) {
-        int atPos = url.lastIndexOf('@');
+        // Only the authority section can carry userinfo. An '@' that appears after it - typically
+        // inside a query-string value such as ?warehouse=x@evil.example.com - must not be taken as
+        // the userinfo delimiter: doing so redefines the target host and sends the credentials and
+        // all query data to an attacker-chosen server.
+        int authorityEnd = url.length();
+        for (char delimiter : AUTHORITY_DELIMITERS) {
+            int index = url.indexOf(delimiter);
+            if (index >= 0 && index < authorityEnd) {
+                authorityEnd = index;
+            }
+        }
+        int atPos = url.lastIndexOf('@', authorityEnd - 1);
         if (atPos > 0) {
             String userPass = url.substring(0, atPos);
             int colonPos = userPass.indexOf(':');
