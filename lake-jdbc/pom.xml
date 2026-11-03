@@ -6,11 +6,11 @@
     <parent>
         <groupId>com.tidbcloud</groupId>
         <artifactId>lake-base</artifactId>
-        <version>0.4.9</version>
+        <version>0.4.10</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>lake-jdbc</artifactId>
-    <version>0.4.9</version>
+    <version>0.4.10</version>
     <name>lake-jdbc</name>
     <packaging>jar</packaging>
 
