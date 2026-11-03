@@ -79,6 +79,12 @@ jobs:
               raise SystemExit("minio did not become ready")
           PY
 
+      - name: Map minio host name
+        # Databend signs presigned URLs with the configured S3 endpoint (http://minio:9000), and
+        # the driver fetches them from the runner, so the runner must resolve `minio` too. The
+        # published 9000 port then reaches the service container. `tests/Makefile` does the same.
+        run: echo '127.0.0.1 minio' | sudo tee -a /etc/hosts
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
