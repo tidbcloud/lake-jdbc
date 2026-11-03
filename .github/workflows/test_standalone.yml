@@ -15,11 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       lake:
-        image: datafuselabs/databend:nightly
+        image: datafuselabs/databend:v1.2.960-nightly
         env:
           QUERY_DEFAULT_USER: tidbcloud
           QUERY_DEFAULT_PASSWORD: tidbcloud
-          MINIO_ENABLED: true
         # options: >-
         #   --health-cmd "curl -fs http://localhost:8000/v1/health || exit 1"
         #   --health-interval 10s
