@@ -25,7 +25,7 @@ Add following code block as a dependency
 <dependency>
     <groupId>com.tidbcloud</groupId>
     <artifactId>lake-jdbc</artifactId>
-    <version>0.4.9</version>
+    <version>0.4.10</version>
 </dependency>
 ```
 
@@ -37,6 +37,30 @@ Note: build from source requires Java 11+, Maven 3.6.3+
 cd lake-jdbc
 mvn clean install -DskipTests
 ```
+
+## Upgrade notes
+
+### 0.4.10
+
+- **`DatabaseMetaData.getURL()` no longer contains credentials.** Since 0.4.10, `DatabaseMetaData.getURL()` and
+  `Connection.getMetaData().getURL()` return the base URL without userinfo and without `?password=`, `?accesstoken=`
+  or `?token=`. If you store that string and later pass it to `DriverManager.getConnection(...)` to reconnect, use the
+  original connection configuration instead, or rebuild the URL from `getUserName()` and your own credential source.
+- **`PreparedStatement#setString` now escapes backslashes.** The server treats `\` as the escape character inside
+  single-quoted string literals, so 0.4.10 escapes both the backslash and the quote (`\` → `\\`, `'` → `\'`). Before
+  0.4.10 a value such as `C:\temp` was stored as `C:<TAB>emp`, and values containing `\` could produce malformed
+  literals, syntax errors, or SQL injection. New versions store the value you pass. If your application pre-escaped
+  backslashes to work around the old behaviour, that value will now be stored with an extra `\`; audit existing rows
+  with `SELECT count(*) FROM <table> WHERE <column> LIKE '%\\\\%'` (adjust the pattern and quoting to your table,
+  column and client) and migrate the rows that were double-escaped.
+- **Clearer errors for malformed connection URLs.** A userinfo password containing a raw `/`, `?` or `#`, or the
+  `jdbc:lake://https://user:password@host:port/db` form, now fails with an explicit `Invalid host` / `Invalid URI`
+  message instead of an authentication error. Percent-encode special characters in the userinfo password (for
+  example `P%2Fss`). These URLs did not connect with older versions either.
+- **Credential query parameters are no longer forwarded to the server.** `password`, `accesstoken`, `access_token`
+  and `token` in the connection URL are still parsed as connection properties, but they are no longer appended to
+  every HTTP request. If an authentication proxy in front of your deployment relies on one of those parameters being
+  present on each request, configure it to accept the driver's `Authorization` header instead.
 
 ## Testing
 
