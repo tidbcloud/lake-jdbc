@@ -14,11 +14,26 @@ jobs:
   test:
     runs-on: ubuntu-latest
     services:
+      minio:
+        image: coollabsio/minio:RELEASE.2025-10-15T17-29-55Z
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        command: server /data
+        ports:
+          - 9000:9000
       lake:
         image: datafuselabs/databend:v1.2.960-nightly
         env:
           QUERY_DEFAULT_USER: tidbcloud
           QUERY_DEFAULT_PASSWORD: tidbcloud
+          # The all-in-one image must not download MinIO (dl.min.io returns 410 Gone), so
+          # storage is configured explicitly and an external MinIO service is used instead.
+          QUERY_STORAGE_TYPE: s3
+          AWS_S3_ENDPOINT: http://minio:9000
+          AWS_S3_BUCKET: lake
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
         # options: >-
         #   --health-cmd "curl -fs http://localhost:8000/v1/health || exit 1"
         #   --health-interval 10s
@@ -26,12 +41,43 @@ jobs:
         #   --health-retries 5
         ports:
           - 8000:8000
-          - 9000:9000
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+
+      - name: Create S3 bucket
+        run: |
+          python3 -m pip install --quiet boto3
+          python3 - <<'PY'
+          import time
+          import boto3
+          from botocore.exceptions import BotoCoreError, ClientError
+
+          s3 = boto3.client(
+              "s3",
+              endpoint_url="http://127.0.0.1:9000",
+              aws_access_key_id="minioadmin",
+              aws_secret_access_key="minioadmin",
+              region_name="us-east-1",
+          )
+          for _ in range(30):
+              try:
+                  s3.create_bucket(Bucket="lake")
+                  print("created bucket lake")
+                  break
+              except ClientError as error:
+                  if error.response["Error"]["Code"] in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+                      print("bucket lake already exists")
+                      break
+                  print("waiting for minio: %s" % error)
+              except BotoCoreError as error:
+                  print("waiting for minio: %s" % error)
+              time.sleep(2)
+          else:
+              raise SystemExit("minio did not become ready")
+          PY
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
