@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_ref:
+        description: 'Optional existing release tag or commit to publish'
+        required: false
+        type: string
 
 jobs:
   build-and-release:
@@ -11,7 +16,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ inputs.release_ref || github.ref }}
+
+      - name: Pin Maven for reproducible Central staging
+        shell: bash
+        run: |
+          # New runner Maven versions add repository metadata that the existing Central
+          # publisher includes in its bundle. Pin the build tool independently of the source tag.
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$RUNNER_TEMP/maven.tar.gz" \
+            https://archive.apache.org/dist/maven/maven-3/3.9.14/binaries/apache-maven-3.9.14-bin.tar.gz
+          echo "d50af8ab5e6005b46a07f0ce9d3719e67cfdf898da988a84871304cd59fb1af0fef2f99dea709e6e66f21f732f905979b5c2dce6b6860406f60a70e84d9cf0b8  $RUNNER_TEMP/maven.tar.gz" | sha512sum --check
+          tar -xzf "$RUNNER_TEMP/maven.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-3.9.14/bin" >> "$GITHUB_PATH"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -40,7 +57,11 @@ jobs:
           done
 
       - name: Run Maven clean deploy with release profile
-        run: mvn clean deploy -P release --batch-mode --no-transfer-progress
+        run: |
+          git rev-parse HEAD
+          mvn --version
+          mvn clean deploy -P release --batch-mode --no-transfer-progress \
+            -DignorePublishedComponents=true -DwaitUntil=PUBLISHED
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_TOKEN_PASSWORD }}
