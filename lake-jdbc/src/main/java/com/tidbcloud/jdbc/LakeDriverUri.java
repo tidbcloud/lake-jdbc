@@ -11,10 +11,9 @@ import com.google.common.net.HostAndPort;
 import okhttp3.Cookie;
 import okhttp3.OkHttpClient;
 
-import java.io.UnsupportedEncodingException;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLEncoder;
 import java.sql.SQLException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -157,6 +156,15 @@ final class LakeDriverUri {
     private static URI canonicalizeUri(URI uri, boolean isSSLSecured, String sslmode) throws SQLException {
         requireNonNull(uri, "uri is null");
         String authority = uri.getAuthority();
+        if (authority != null) {
+            // The userinfo has already been parsed into the connection properties; a residual
+            // "user:pass@" would make HostAndPort reject the authority and silently fall back to
+            // the default port.
+            int atPos = authority.lastIndexOf('@');
+            if (atPos >= 0) {
+                authority = authority.substring(atPos + 1);
+            }
+        }
         String scheme;
         if (isSSLSecured || "enable".equals(sslmode)) {
             scheme = "https";
@@ -218,27 +226,84 @@ final class LakeDriverUri {
         }
         int atPos = url.lastIndexOf('@', authorityEnd - 1);
         if (atPos > 0) {
-            String userPass = url.substring(0, atPos);
-            int colonPos = userPass.indexOf(':');
-            if (colonPos > 0) {
-                String user = userPass.substring(0, colonPos);
-                String pass = userPass.substring(colonPos + 1);
-                String encodePass = urlEncode(pass);
-                properties.put(USER.getKey(), user);
-                properties.put(ConnectionProperties.PASSWORD.getKey(), encodePass);
-            } else {
-                properties.put(USER.getKey(), userPass);
-            }
+            setUserInfoProperties(url.substring(0, atPos), properties);
             url = url.substring(atPos + 1);
         }
         return url;
     }
 
-    private static String urlEncode(String target) {
+    /**
+     * Parses a {@code user[:password]} userinfo section into the connection properties.
+     *
+     * <p>Percent-escapes are decoded: the value is used verbatim as the HTTP basic-auth credential,
+     * so {@code p%2Fss} has to become {@code p/ss} before it is sent. Encoding it instead (the
+     * pre-0.4.10 behaviour) made every password containing {@code : @ / % + space} unusable.
+     */
+    private static void setUserInfoProperties(String userInfo, Map<String, String> properties) {
+        int colonPos = userInfo.indexOf(':');
+        if (colonPos > 0) {
+            properties.put(USER.getKey(), decodeUserInfoComponent(userInfo.substring(0, colonPos)));
+            properties.put(ConnectionProperties.PASSWORD.getKey(),
+                    decodeUserInfoComponent(userInfo.substring(colonPos + 1)));
+        } else {
+            properties.put(USER.getKey(), decodeUserInfoComponent(userInfo));
+        }
+    }
+
+    /**
+     * Decodes percent-escapes the way the userinfo component of a URI defines them: {@code %XX} is
+     * one byte of the UTF-8 encoded value and everything else - including {@code +} - is literal.
+     */
+    static String decodeUserInfoComponent(String value) {
+        if (value.indexOf('%') < 0) {
+            return value;
+        }
+        ByteArrayOutputStream decoded = new ByteArrayOutputStream(value.length());
+        for (int i = 0; i < value.length(); ) {
+            if (value.charAt(i) == '%' && i + 2 < value.length()) {
+                int high = Character.digit(value.charAt(i + 1), 16);
+                int low = Character.digit(value.charAt(i + 2), 16);
+                if (high >= 0 && low >= 0) {
+                    decoded.write((high << 4) + low);
+                    i += 3;
+                    continue;
+                }
+            }
+            int codePoint = value.codePointAt(i);
+            byte[] bytes = new String(Character.toChars(codePoint)).getBytes(StandardCharsets.UTF_8);
+            decoded.write(bytes, 0, bytes.length);
+            i += Character.charCount(codePoint);
+        }
+        return new String(decoded.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Consumes the userinfo that a URL carries inside the URI itself.
+     *
+     * <p>Only the {@code jdbc:lake://http(s)://user:password@host:port/db} form reaches this
+     * method: its scheme prefix makes the first {@code /} end the authority section, so
+     * {@link #tryParseUriUserPassword} deliberately leaves the userinfo untouched there. It has to
+     * be consumed before the URI is canonicalized, because {@link #canonicalizeUri} resolves the
+     * port from the authority and {@code HostAndPort} rejects an authority that still contains '@'.
+     */
+    private static URI stripUriUserInfo(URI uri, Map<String, String> properties) throws SQLException {
+        String userInfo = uri.getUserInfo();
+        if (isNullOrEmpty(userInfo)) {
+            return uri;
+        }
+        // URI#getUserInfo() is decoded already, so the values are stored as they are.
+        int colonPos = userInfo.indexOf(':');
+        if (colonPos > 0) {
+            properties.put(USER.getKey(), userInfo.substring(0, colonPos));
+            properties.put(ConnectionProperties.PASSWORD.getKey(), userInfo.substring(colonPos + 1));
+        } else {
+            properties.put(USER.getKey(), userInfo);
+        }
         try {
-            return URLEncoder.encode(target, StandardCharsets.UTF_8.toString());
-        } catch (UnsupportedEncodingException e) {
-            return null;
+            return new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(),
+                    uri.getPath(), uri.getQuery(), uri.getFragment());
+        } catch (URISyntaxException e) {
+            throw new SQLException("Invalid URI: " + uri, e);
         }
     }
 
@@ -281,6 +346,7 @@ final class LakeDriverUri {
             if (uri.getHost() == null || uri.getHost().isEmpty()) {
                 throw new SQLException("Invalid host " + uri.getHost());
             }
+            uri = stripUriUserInfo(uri, uriProperties);
 
             if ("https".equals(uri.getScheme())) {
                 uriProperties.put(SSL.getKey(), "true");
