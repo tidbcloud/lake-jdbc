@@ -115,15 +115,10 @@ public class LakeDatabaseMetaData implements DatabaseMetaData {
     }
 
     private static void quoteStringLiteral(StringBuilder out, String value) {
-        out.append('\'');
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            out.append(c);
-            if (c == '\'') {
-                out.append('\'');
-            }
-        }
-        out.append('\'');
+        // Metadata patterns reach this method straight from the caller and are spliced into SQL, so
+        // they need the same escaping as a prepared-statement value: doubling the quote alone lets
+        // a backslash in the pattern escape it and close the literal.
+        out.append(SqlStringLiterals.quote(value));
     }
 
     @Override

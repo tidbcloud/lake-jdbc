@@ -53,6 +53,27 @@ public class TestPreparedStatementBytes {
         Assert.assertEquals(objectSql, "select from_hex('00ff27615c')");
     }
 
+    @Test(groups = {"UNIT"})
+    public void testSetStringQuotesPlainValueOnTheWire() throws Exception {
+        Assert.assertEquals(captureSql(null, statement -> statement.setString(1, "abc")),
+                "select 'abc'");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testSetStringEscapesBackslashesOnTheWire() throws Exception {
+        // C:\temp must not turn into C:<TAB>emp server-side, i.e. the backslash has to be doubled.
+        Assert.assertEquals(captureSql(null, statement -> statement.setString(1, "C:\\temp")),
+                "select 'C:\\\\temp'");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testSetStringEscapesTheInjectionPayloadOnTheWire() throws Exception {
+        Assert.assertEquals(captureSql(null, statement -> statement.setString(1, "x\\' or 1=1 -- ")),
+                "select 'x\\\\\\' or 1=1 -- '");
+        Assert.assertEquals(captureSql(null, statement -> statement.setString(1, "x' or '1'='1")),
+                "select 'x\\' or \\'1\\'=\\'1'");
+    }
+
     private static String captureSql(String binaryFormat, StatementBinder binder) throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);

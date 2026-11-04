@@ -384,4 +384,21 @@ public class TestLakeDatabaseMetaData {
         assertEquals(LakeDatabaseMetaData.stringColumnLike("col_name", "test%"), "col_name LIKE 'test%'");
         assertEquals(LakeDatabaseMetaData.stringColumnLike("col_name", "test"), "col_name = 'test'");
     }
+
+    @Test
+    public void testMetadataPatternsEscapeQuotesAndBackslashes() {
+        // A metadata pattern is spliced into SQL, so it needs the same backslash-first escaping as a
+        // prepared-statement value: doubling the quote alone let a caller-supplied backslash escape
+        // it and close the literal ('x\'' + " OR 1=1 -- ").
+        assertEquals(LakeDatabaseMetaData.stringColumnLike("col_name", "x\\' OR 1=1 -- "),
+                "col_name = 'x\\\\\\' OR 1=1 -- '");
+        assertEquals(LakeDatabaseMetaData.stringColumnLike("col_name", "O'Reilly"),
+                "col_name = 'O\\'Reilly'");
+        assertEquals(LakeDatabaseMetaData.stringColumnLike("col_name", "50%_off"),
+                "col_name LIKE '50%_off'");
+        assertEquals(LakeDatabaseMetaData.stringColumnLike("col_name", "a\\%"),
+                "col_name LIKE 'a\\\\%'");
+        assertEquals(LakeDatabaseMetaData.stringColumnLike("col_name", "C:\\temp%"),
+                "col_name LIKE 'C:\\\\temp%'");
+    }
 }
