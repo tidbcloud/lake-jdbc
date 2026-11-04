@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.TlsVersion;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
@@ -49,18 +50,51 @@ public final class OkHttpUtils {
     }
 
     public static void setupSsl(OkHttpClient.Builder clientBuilder) {
-        try {
-            X509TrustManager trustManager = defaultTrustManager();
-            SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, new TrustManager[] {trustManager}, new SecureRandom());
-            clientBuilder.sslSocketFactory(sslContext.getSocketFactory(), trustManager);
-            clientBuilder.connectionSpecs(Arrays.asList(
-                    new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
-                            .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
-                            .build(),
-                    ConnectionSpec.COMPATIBLE_TLS));
-        } catch (GeneralSecurityException e) {
-            throw new RuntimeException("Error setting up SSL: " + e.getMessage(), e);
+        // Reuse the TLS identity across JDBC connections while retaining certificate and
+        // hostname verification. Plain HTTP clients keep their default TLS configuration.
+        SslConfig config = SslConfig.get();
+        clientBuilder.sslSocketFactory(config.socketFactory, config.trustManager);
+        clientBuilder.connectionSpecs(Arrays.asList(
+                new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
+                        .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
+                        .build(),
+                ConnectionSpec.COMPATIBLE_TLS));
+    }
+
+    private static final class SslConfig {
+        private static volatile SslConfig instance;
+
+        private final SSLSocketFactory socketFactory;
+        private final X509TrustManager trustManager;
+
+        private SslConfig(SSLSocketFactory socketFactory, X509TrustManager trustManager) {
+            this.socketFactory = socketFactory;
+            this.trustManager = trustManager;
+        }
+
+        private static SslConfig get() {
+            SslConfig config = instance;
+            if (config == null) {
+                synchronized (SslConfig.class) {
+                    config = instance;
+                    if (config == null) {
+                        config = create();
+                        instance = config;
+                    }
+                }
+            }
+            return config;
+        }
+
+        private static SslConfig create() {
+            try {
+                X509TrustManager trustManager = defaultTrustManager();
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, new TrustManager[] {trustManager}, new SecureRandom());
+                return new SslConfig(sslContext.getSocketFactory(), trustManager);
+            } catch (GeneralSecurityException e) {
+                throw new RuntimeException("Error setting up SSL: " + e.getMessage(), e);
+            }
         }
     }
 
