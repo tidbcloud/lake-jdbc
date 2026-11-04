@@ -367,21 +367,17 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
             setValueNull(i);
             return;
         }
-        setValue(i, String.format("'%s'", escapeStringLiteral(s)), s);
+        setValue(i, SqlStringLiterals.quote(s), s);
     }
 
     /**
      * Escapes a value so that it is safe inside a single-quoted SQL literal.
      *
-     * <p>The server treats the backslash as the escape character: this driver emits {@code \'} for
-     * a quote and {@link LakeDatabaseMetaData#getSearchStringEscape()} reports {@code "\\"}. Both
-     * the backslash itself and the quote therefore have to be escaped, backslash first. Escaping
-     * the quote only (the previous behaviour) let a caller-supplied backslash consume the escaping
-     * backslash and close the literal, e.g. {@code x\' or 1=1 -- } was rendered as
-     * {@code 'x\\' or 1=1 -- '} and the remainder was parsed as SQL.
+     * <p>Kept as the prepared-statement entry point for the escaping rules documented on
+     * {@link SqlStringLiterals}; the metadata filter builders use the same implementation.
      */
     static String escapeStringLiteral(String value) {
-        return value.replace("\\", "\\\\").replace("'", "\\'");
+        return SqlStringLiterals.escape(value);
     }
 
     @Override

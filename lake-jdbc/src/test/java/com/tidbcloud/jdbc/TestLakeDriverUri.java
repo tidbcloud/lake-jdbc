@@ -285,10 +285,91 @@ public class TestLakeDriverUri {
     }
 
     @Test(groups = {"UNIT"})
-    public void testUrlUserPasswordEncodesReservedCharacters() throws SQLException {
+    public void testUrlUserPasswordKeepsReservedCharacters() throws SQLException {
+        // The password is used verbatim as the HTTP basic-auth credential, so it must not be
+        // re-encoded: p@ss:wo@rd has to reach the server as p@ss:wo@rd.
         LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://user:p@ss:wo@rd@localhost:8000/default", null);
         Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
-        Assert.assertEquals(uri.getProperties().getProperty("password"), "p%40ss%3Awo%40rd");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "p@ss:wo@rd");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testUrlUserPasswordDecodesPercentEscapes() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://us%65r:p%2Fss%40word@localhost:8000/default", null);
+        Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "p/ss@word");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testUrlUserPasswordKeepsPlusLiteral() throws SQLException {
+        // form-urlencoded decoding would turn '+' into a space, userinfo decoding must not.
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://user:a+b@localhost:8000/default", null);
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "a+b");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testUrlUserPasswordDecodesUtf8PercentEscapes() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://user:p%C3%A4ss@localhost:8000/default", null);
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "päss");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testSchemePrefixedUserInfoKeepsPortAndCredentials() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://https://user:password@host:8443/default", null);
+
+        Assert.assertEquals(uri.getUri().getScheme(), "https");
+        Assert.assertEquals(uri.getUri().getHost(), "host");
+        Assert.assertEquals(uri.getUri().getPort(), 8443);
+        Assert.assertNull(uri.getUri().getUserInfo());
+        Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "password");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testSchemePrefixedUserInfoKeepsPlainHttpPort() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://http://user:pass@localhost:8000/default", null);
+
+        Assert.assertEquals(uri.getUri().getScheme(), "http");
+        Assert.assertEquals(uri.getUri().getPort(), 8000);
+        Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "pass");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testAtSignInPathIsKeptAsPartOfTheDatabaseName() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://localhost:8000/db@pfx", null);
+        Assert.assertEquals(uri.getUri().getHost(), "localhost");
+        Assert.assertEquals(uri.getProperties().getProperty("database"), "db@pfx");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testIpv6HostWithUserInfo() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://user:pw@[::1]:8000/default", null);
+        Assert.assertEquals(uri.getUri().getHost(), "[::1]");
+        Assert.assertEquals(uri.getUri().getPort(), 8000);
+        Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "pw");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testCredentialQueryParameterCaseVariantsAreNotRetained() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://localhost:8000/default?Password=secret&ACCESS_TOKEN=tok&warehouse=w1", null);
+
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "secret");
+        Assert.assertEquals(uri.getProperties().getProperty("access_token"), "tok");
+        Assert.assertEquals(uri.getUri().getQuery(), "warehouse=w1");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testUriWithoutRemainingQueryParametersHasNoQuery() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://localhost:8000/default?password=secret&accesstoken=tok", null);
+
+        Assert.assertNull(uri.getUri().getQuery());
     }
 
     @Test(groups = "IT")

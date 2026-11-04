@@ -42,10 +42,13 @@ mvn clean install -DskipTests
 
 ### 0.4.10
 
-- **`DatabaseMetaData.getURL()` no longer contains credentials.** Since 0.4.10, `DatabaseMetaData.getURL()` and
-  `Connection.getMetaData().getURL()` return the base URL without userinfo and without `?password=`, `?accesstoken=`
-  or `?token=`. If you store that string and later pass it to `DriverManager.getConnection(...)` to reconnect, use the
-  original connection configuration instead, or rebuild the URL from `getUserName()` and your own credential source.
+- **`DatabaseMetaData.getURL()` no longer contains credentials.** The base URL returned by `DatabaseMetaData.getURL()`
+  and `Connection.getMetaData().getURL()` no longer carries `?password=`, `?accesstoken=` or `?token=`; those
+  parameters are still parsed as connection properties, they are just not replayed on every request. Userinfo was
+  already parsed into the connection properties instead of the base URL, and 0.4.10 also strips it from URLs that
+  carry it inside the parsed authority (defence in depth). If you store that string and later pass it to
+  `DriverManager.getConnection(...)` to reconnect, use the original connection configuration instead, or rebuild the
+  URL from `getUserName()` and your own credential source.
 - **`PreparedStatement#setString` now escapes backslashes.** The server treats `\` as the escape character inside
   single-quoted string literals, so 0.4.10 escapes both the backslash and the quote (`\` → `\\`, `'` → `\'`). Before
   0.4.10 a value such as `C:\temp` was stored as `C:<TAB>emp`, and values containing `\` could produce malformed
@@ -53,10 +56,19 @@ mvn clean install -DskipTests
   backslashes to work around the old behaviour, that value will now be stored with an extra `\`; audit existing rows
   with `SELECT count(*) FROM <table> WHERE <column> LIKE '%\\\\%'` (adjust the pattern and quoting to your table,
   column and client) and migrate the rows that were double-escaped.
-- **Clearer errors for malformed connection URLs.** A userinfo password containing a raw `/`, `?` or `#`, or the
-  `jdbc:lake://https://user:password@host:port/db` form, now fails with an explicit `Invalid host` / `Invalid URI`
-  message instead of an authentication error. Percent-encode special characters in the userinfo password (for
-  example `P%2Fss`). These URLs did not connect with older versions either.
+- **`DatabaseMetaData` name filters now escape backslashes too.** `getTables`, `getColumns`, `getSchemas` and friends
+  splice the caller-supplied schema/table/column patterns into SQL and used to double only the single quote, so a
+  pattern containing `\` could escape that quote and inject SQL - the same defect fixed in `setString`. They now use
+  the same escaping. Note that `\` is also the `LIKE` escape character (`getSearchStringEscape()` returns `\`), so a
+  pattern that should match a literal backslash has to escape it for `LIKE` as well.
+- **Userinfo passwords are percent-decoded instead of percent-encoded.** Before 0.4.10 the driver URL-encoded the
+  userinfo password and sent the encoded text as the basic-auth credential, so a password containing `:`, `@`, `/`,
+  `%`, `+` or a space could never authenticate. 0.4.10 decodes `%XX` escapes (UTF-8) and sends the value verbatim:
+  write `jdbc:lake://user:P%2Fss@host:8000/default` for the password `P/ss`, and `+` stays a literal plus. A raw `/`,
+  `?` or `#` still ends the authority section, so those characters have to be percent-encoded as well.
+- **`jdbc:lake://http(s)://user:password@host:port/db` keeps its port and credentials.** The scheme-prefixed form used
+  to mis-split the userinfo (`user=https`, password `//user:password`), so authentication failed; the credentials are
+  now read from the authority and the explicit port is preserved.
 - **Credential query parameters are no longer forwarded to the server.** `password`, `accesstoken`, `access_token`
   and `token` in the connection URL are still parsed as connection properties, but they are no longer appended to
   every HTTP request. If an authentication proxy in front of your deployment relies on one of those parameters being
