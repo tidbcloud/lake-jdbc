@@ -30,7 +30,6 @@ import java.nio.charset.StandardCharsets;
 
 import static com.tidbcloud.jdbc.internal.http.OkHttpUtils.*;
 import static com.tidbcloud.jdbc.ConnectionProperties.*;
-import static com.tidbcloud.jdbc.LakeConstant.ENABLE_STR;
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.lang.String.format;
@@ -86,14 +85,17 @@ final class LakeDriverUri {
         Map.Entry<URI, Map<String, String>> uriAndProperties = parse(url);
         URI rawUri = uriAndProperties.getKey();
         this.properties = mergeProperties(rawUri, uriAndProperties.getValue(), driverProperties);
-        this.useSecureConnection = SSL.getValue(properties).orElse(false);
+        this.sslmode = SSL_MODE.getValue(properties).orElse("disable");
+        this.useSecureConnection = SSL.getValue(properties).orElse(false) || requiresTls(this.sslmode);
         this.useVerify = USE_VERIFY.getValue(properties).orElse(false);
         this.debug = DEBUG.getValue(properties).orElse(false);
         this.strNullAsNull = STRNULL_AS_NULL.getValue(properties).orElse(true);
         this.warehouse = WAREHOUSE.getValue(properties).orElse("");
-        this.sslmode = SSL_MODE.getValue(properties).orElse("disable");
         this.tenant = TENANT.getValue(properties).orElse("");
-        this.uri = canonicalizeUri(rawUri, this.useSecureConnection, this.sslmode);
+        // Historical sslmode=enable (without ssl=true) used HTTPS on port 8000. Preserve that
+        // implicit port; the newly recognized modes use the conventional HTTPS default.
+        boolean useHttpsPort = SSL.getValue(properties).orElse(false) || !"enable".equalsIgnoreCase(this.sslmode);
+        this.uri = canonicalizeUri(rawUri, this.useSecureConnection, useHttpsPort);
         this.database = DATABASE.getValue(properties).orElse("default");
         this.presignedUrlDisabled = PRESIGNED_URL_DISABLED.getRequiredValue(properties);
         this.presign = PRESIGN.getValue(properties).orElse("");
@@ -154,11 +156,27 @@ final class LakeDriverUri {
         uriProperties.put(DATABASE.getKey(), db);
     }
 
-    private static URI canonicalizeUri(URI uri, boolean isSSLSecured, String sslmode) throws SQLException {
+    private static boolean requiresTls(String mode) {
+        switch (mode.toLowerCase(Locale.US)) {
+            case "enable":
+            case "require":
+            case "verify-ca":
+            case "verify-full":
+                return true;
+            case "disable":
+                return false;
+            default:
+                // Retain legacy handling for unknown spellings, but make the ambiguity visible.
+                logger.warning("Unrecognized sslmode; use enable, require, verify-ca, verify-full or disable");
+                return false;
+        }
+    }
+
+    private static URI canonicalizeUri(URI uri, boolean isSSLSecured, boolean useHttpsPort) throws SQLException {
         requireNonNull(uri, "uri is null");
         String authority = uri.getAuthority();
         String scheme;
-        if (isSSLSecured || "enable".equals(sslmode)) {
+        if (isSSLSecured) {
             scheme = "https";
         } else {
             scheme = "http";
@@ -179,7 +197,7 @@ final class LakeDriverUri {
             // ignore
         }
         if (finalPort == -1) {
-            finalPort = isSSLSecured ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT;
+            finalPort = isSSLSecured && useHttpsPort ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT;
         }
         try {
 
@@ -465,7 +483,7 @@ final class LakeDriverUri {
 
             String password = PASSWORD.getValue(properties).orElse("");
             builder.addInterceptor(basicAuthInterceptor(USER.getValue(properties).orElse(""), password));
-            if (useSecureConnection || ENABLE_STR.equals(sslmode)) {
+            if (useSecureConnection) {
                 setupSsl(builder);
             }
             if (ACCESS_TOKEN.getValue(properties).isPresent()) {
