@@ -331,4 +331,56 @@ public class TestLakeDriverUri {
             Assert.assertEquals(settings.get("query_tag"), "tag1");
         }
     }
+
+    @Test(groups = {"UNIT"})
+    public void testAtSignInQueryValueDoesNotRedefineHost() throws SQLException {
+        // An '@' in a query-string value must not be treated as the userinfo delimiter: that would
+        // make the driver treat the query value as the host and ship credentials to it.
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://user:pw@real.host:443/db?warehouse=x@evil.example.com", null);
+
+        Assert.assertEquals(uri.getUri().getHost(), "real.host");
+        Assert.assertEquals(uri.getUri().getPort(), 443);
+        Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "pw");
+        Assert.assertEquals(uri.getProperties().getProperty("warehouse"), "x@evil.example.com");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testAtSignInQueryValueWithoutUserInfoKeepsHost() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://real.host:8000/db?null_display=@null@", null);
+
+        Assert.assertEquals(uri.getUri().getHost(), "real.host");
+        Assert.assertNull(uri.getProperties().getProperty("user"));
+        Assert.assertEquals(uri.getProperties().getProperty("null_display"), "@null@");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testCredentialQueryParametersAreNotRetainedInBaseUri() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create(
+                "jdbc:lake://localhost:8000/default?password=secret&accesstoken=tok123&warehouse=w1", null);
+
+        // credentials are still available as connection properties
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "secret");
+        Assert.assertEquals(uri.getProperties().getProperty("accesstoken"), "tok123");
+        Assert.assertEquals(uri.getProperties().getProperty("warehouse"), "w1");
+
+        // but they must not be replayed on every request, nor surface through getURL()
+        String query = uri.getUri().getQuery();
+        Assert.assertNotNull(query);
+        Assert.assertFalse(query.contains("secret"), "base URI still carries the password: " + query);
+        Assert.assertFalse(query.contains("tok123"), "base URI still carries the access token: " + query);
+        Assert.assertEquals(query, "warehouse=w1");
+    }
+
+    @Test(groups = {"UNIT"})
+    public void testUserInfoIsNotRetainedInBaseUri() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://user:pw@localhost:8000/default", null);
+
+        Assert.assertEquals(uri.getProperties().getProperty("user"), "user");
+        Assert.assertEquals(uri.getProperties().getProperty("password"), "pw");
+        Assert.assertNull(uri.getUri().getUserInfo());
+        Assert.assertFalse(uri.getUri().toString().contains("pw"));
+    }
 }

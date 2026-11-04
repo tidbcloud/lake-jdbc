@@ -363,17 +363,25 @@ public class LakePreparedStatement extends LakeStatement implements PreparedStat
     public void setString(int i, String s)
             throws SQLException {
         checkOpen();
-        String quoted = s;
         if (s == null) {
             setValueNull(i);
             return;
         }
-        if (s.contains("'")) {
-            quoted = s.replace("'", "\\'");
-        }
-        quoted = String.format("'%s'", quoted);
+        setValue(i, String.format("'%s'", escapeStringLiteral(s)), s);
+    }
 
-        setValue(i, quoted, s);
+    /**
+     * Escapes a value so that it is safe inside a single-quoted SQL literal.
+     *
+     * <p>The server treats the backslash as the escape character: this driver emits {@code \'} for
+     * a quote and {@link LakeDatabaseMetaData#getSearchStringEscape()} reports {@code "\\"}. Both
+     * the backslash itself and the quote therefore have to be escaped, backslash first. Escaping
+     * the quote only (the previous behaviour) let a caller-supplied backslash consume the escaping
+     * backslash and close the literal, e.g. {@code x\' or 1=1 -- } was rendered as
+     * {@code 'x\\' or 1=1 -- '} and the remainder was parsed as SQL.
+     */
+    static String escapeStringLiteral(String value) {
+        return value.replace("\\", "\\\\").replace("'", "\\'");
     }
 
     @Override
