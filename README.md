@@ -354,3 +354,13 @@ java --add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAcces
 ```
 
 If `query_result_format` is not specified, the driver uses JSON.
+# Explicit TLS modes
+
+`sslmode=enable`, `require`, `verify-ca` and `verify-full` select HTTPS with
+certificate and hostname verification. Values are case-insensitive. All these
+modes retain hostname verification; `verify-ca` does not weaken it. An explicit
+port is retained. `require`, `verify-ca` and `verify-full` use port 443 when no
+port is given; the historical `sslmode=enable` implicit port 8000 is preserved.
+`ssl=true` also enables HTTPS. The existing default and `sslmode=disable` remain
+plain HTTP for compatibility with local deployments. Unknown legacy spellings
+retain their previous handling with a warning; use a supported mode explicitly.
