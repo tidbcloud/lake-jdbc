@@ -1,5 +1,7 @@
 package com.tidbcloud.jdbc;
 
+import com.tidbcloud.jdbc.internal.binding.SqlText;
+
 /**
  * Renders values as single-quoted SQL string literals for the lake server.
  *
@@ -19,10 +21,10 @@ final class SqlStringLiterals {
     }
 
     static String escape(String value) {
-        return value.replace("\\", "\\\\").replace("'", "\\'");
+        return SqlText.escapeString(value);
     }
 
     static String quote(String value) {
-        return String.format("'%s'", escape(value));
+        return SqlText.quoteString(value);
     }
 }

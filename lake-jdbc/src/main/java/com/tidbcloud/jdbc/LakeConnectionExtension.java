@@ -35,6 +35,11 @@ public interface LakeConnectionExtension {
     }
 
 
+    /**
+     * Uploads below a stage-relative prefix. Names are plain data, not SQL;
+     * parent traversal and control characters are rejected before reading input.
+     * A null stage selects the user's stage.
+     */
     void uploadStream(String stageName, String destPrefix, InputStream inputStream, String destFileName, long fileSize, boolean compressData) throws SQLException;
 
     /**

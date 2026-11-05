@@ -379,3 +379,20 @@ at connection-time resolution, and redirects/proxies are disabled. Storage URLs
 and response bodies are omitted from diagnostics. For customer-controlled private
 storage (including local MinIO), explicitly set `presign_allow_private=true`;
 this also permits HTTP and must only be used for trusted storage endpoints.
+
+### Schema and stage-name handling
+
+`Connection.setSchema` takes a plain database name, which the driver quotes as
+one identifier. Do not include SQL identifier delimiters in the argument.
+Streaming-load qualification also quotes the current schema returned by the
+server. Driver control operations accept one SQL statement; a trailing semicolon
+and comments remain supported.
+
+Stage names and file paths are data, including spaces, quotes and semicolons.
+Presign requests quote the entire stage location as a string literal. Both
+presigned transfers and direct stage uploads validate paths before reading the
+stream or sending a request: parent (`..`) segments, encoded parent traversal,
+backslashes and control characters are rejected. Redundant slashes and `.` path
+segments are normalized; a null stage selects the user's `~` stage.
+Server permissions still determine which stages and databases a credential may
+access; these client APIs do not sandbox an overprivileged connection.
