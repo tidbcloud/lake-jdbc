@@ -89,6 +89,7 @@ public class TestPreparedStatementBytes {
         try {
             Properties properties = new Properties();
             properties.setProperty("presigned_url_disabled", "true");
+            properties.setProperty("ssl", "false");
             if (binaryFormat != null) {
                 properties.setProperty("binary_format", binaryFormat);
             }

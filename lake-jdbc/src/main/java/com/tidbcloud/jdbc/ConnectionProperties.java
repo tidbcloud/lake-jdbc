@@ -14,6 +14,7 @@ public final class ConnectionProperties {
     public static final ConnectionProperty<String> USER = new User();
     public static final ConnectionProperty<String> PASSWORD = new Password();
     public static final ConnectionProperty<Boolean> SSL = new Ssl();
+    public static final ConnectionProperty<Boolean> PRESIGN_ALLOW_PRIVATE = new PresignAllowPrivate();
 
     public static final ConnectionProperty<Boolean> USE_VERIFY = new UseVerify();
 
@@ -52,6 +53,7 @@ public final class ConnectionProperties {
             .add(STRNULL_AS_NULL)
             .add(WAREHOUSE)
             .add(SSL_MODE)
+            .add(PRESIGN_ALLOW_PRIVATE)
             .add(TENANT)
             .add(DATABASE)
             .add(ACCESS_TOKEN)
@@ -91,6 +93,12 @@ public final class ConnectionProperties {
     }
 
     // whether enable ssl or not default is true
+    private static class PresignAllowPrivate extends AbstractConnectionProperty<Boolean> {
+        public PresignAllowPrivate() {
+            super("presign_allow_private", Optional.of("false"), NOT_REQUIRED, ALLOWED, BOOLEAN_CONVERTER);
+        }
+    }
+
     private static class Ssl
             extends AbstractConnectionProperty<Boolean> {
         public Ssl() {
@@ -135,7 +143,7 @@ public final class ConnectionProperties {
 
     private static class SSLMode extends AbstractConnectionProperty<String> {
         public SSLMode() {
-            super("sslmode", Optional.of("disable"), NOT_REQUIRED, ALLOWED, STRING_CONVERTER);
+            super("sslmode", Optional.of("require"), NOT_REQUIRED, ALLOWED, STRING_CONVERTER);
         }
     }
 
@@ -169,7 +177,7 @@ public final class ConnectionProperties {
 
     private static class CopyPurge extends AbstractConnectionProperty<Boolean> {
         public CopyPurge() {
-            super("copy_purge", Optional.of("true"), NOT_REQUIRED, ALLOWED, BOOLEAN_CONVERTER);
+            super("copy_purge", Optional.of("false"), NOT_REQUIRED, ALLOWED, BOOLEAN_CONVERTER);
         }
     }
 
@@ -208,20 +216,20 @@ public final class ConnectionProperties {
     private static class QueryTimeout
             extends AbstractConnectionProperty<Integer> {
         public QueryTimeout() {
-            super("query_timeout", Optional.of(String.valueOf(0)), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
+            super("query_timeout", Optional.of("3600"), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
         }
     }
 
     private static class ConnectionTimeout
             extends AbstractConnectionProperty<Integer> {
         public ConnectionTimeout() {
-            super("connection_timeout", Optional.of(String.valueOf(0)), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
+            super("connection_timeout", Optional.of("60"), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
         }
     }
 
     private static class SocketTimeout extends AbstractConnectionProperty<Integer> {
         public SocketTimeout() {
-            super("socket_timeout", Optional.of(String.valueOf(0)), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
+            super("socket_timeout", Optional.of("600"), NOT_REQUIRED, ALLOWED, INTEGER_CONVERTER);
         }
     }
 

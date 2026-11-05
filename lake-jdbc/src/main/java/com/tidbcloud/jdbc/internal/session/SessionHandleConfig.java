@@ -17,6 +17,7 @@ public final class SessionHandleConfig {
     private final String warehouse;
     private final String tenant;
     private final boolean debug;
+    private final boolean presignAllowPrivate;
     private final SessionState initialSession;
 
     private SessionHandleConfig(Builder builder) {
@@ -31,6 +32,7 @@ public final class SessionHandleConfig {
         this.warehouse = builder.warehouse;
         this.tenant = builder.tenant;
         this.debug = builder.debug;
+        this.presignAllowPrivate = builder.presignAllowPrivate;
         this.initialSession = Objects.requireNonNull(builder.initialSession, "initialSession is null");
     }
 
@@ -78,6 +80,8 @@ public final class SessionHandleConfig {
         return tenant;
     }
 
+    public boolean isPresignAllowPrivate() { return presignAllowPrivate; }
+
     public boolean isDebug() {
         return debug;
     }
@@ -98,6 +102,11 @@ public final class SessionHandleConfig {
         private String warehouse;
         private String tenant;
         private boolean debug;
+        private boolean presignAllowPrivate;
+
+        public Builder setPresignAllowPrivate(boolean value) {
+            this.presignAllowPrivate = value; return this;
+        }
         private SessionState initialSession;
 
         public Builder setBaseUri(URI baseUri) {

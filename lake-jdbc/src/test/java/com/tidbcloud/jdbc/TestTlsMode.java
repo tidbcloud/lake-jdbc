@@ -25,9 +25,9 @@ public class TestTlsMode {
     }
 
     @Test(groups = {"UNIT"})
-    public void testExplicitPortAndExistingPlaintextDefaultArePreserved() throws SQLException {
-        Assert.assertEquals(LakeDriverUri.create("jdbc:lake://host", null).getUri().getScheme(), "http");
-        Assert.assertEquals(LakeDriverUri.create("jdbc:lake://host", null).getUri().getPort(), 8000);
+    public void testSecureDefaultAndExplicitPortArePreserved() throws SQLException {
+        Assert.assertEquals(LakeDriverUri.create("jdbc:lake://host", null).getUri().getScheme(), "https");
+        Assert.assertEquals(LakeDriverUri.create("jdbc:lake://host", null).getUri().getPort(), 443);
         Assert.assertEquals(LakeDriverUri.create("jdbc:lake://host:8443?sslmode=require", null).getUri().getPort(), 8443);
         Properties properties = new Properties();
         properties.setProperty("sslmode", "require");

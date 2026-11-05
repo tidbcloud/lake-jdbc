@@ -69,7 +69,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setWarehouse("test_wh")
                             .setInitialSession(SessionState.createDefault())
@@ -124,7 +124,7 @@ public class TestLakeSessionHandle {
 
         LakeSessionHandle handle = new LakeSessionHandle(
                 client,
-                SessionHandleConfig.builder()
+                SessionHandleConfig.builder().setPresignAllowPrivate(true)
                         .setBaseUri(URI.create("http://127.0.0.1:1"))
                         .setInitialSession(SessionState.createDefault())
                         .setQueryTimeoutSecs(30)
@@ -171,7 +171,7 @@ public class TestLakeSessionHandle {
 
         LakeSessionHandle handle = new LakeSessionHandle(
                 client,
-                SessionHandleConfig.builder()
+                SessionHandleConfig.builder().setPresignAllowPrivate(true)
                         .setBaseUri(URI.create("http://127.0.0.1:1"))
                         .setInitialSession(SessionState.createDefault())
                         .setQueryTimeoutSecs(30)
@@ -218,7 +218,7 @@ public class TestLakeSessionHandle {
 
         LakeSessionHandle handle = new LakeSessionHandle(
                 client,
-                SessionHandleConfig.builder()
+                SessionHandleConfig.builder().setPresignAllowPrivate(true)
                         .setBaseUri(URI.create("http://127.0.0.1:1"))
                         .setInitialSession(SessionState.createDefault())
                         .setQueryTimeoutSecs(30)
@@ -283,7 +283,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryTimeoutSecs(30)
@@ -419,7 +419,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryResultFormat(QueryResultFormat.ARROW)
@@ -481,7 +481,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryResultFormat(QueryResultFormat.ARROW)
@@ -527,7 +527,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryTimeoutSecs(30)
@@ -569,7 +569,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryTimeoutSecs(30)
@@ -650,7 +650,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryTimeoutSecs(30)
@@ -696,7 +696,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryTimeoutSecs(30)
@@ -742,7 +742,7 @@ public class TestLakeSessionHandle {
                     new OkHttpClient.Builder()
                             .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                             .build(),
-                    SessionHandleConfig.builder()
+                    SessionHandleConfig.builder().setPresignAllowPrivate(true)
                             .setBaseUri(URI.create("http://127.0.0.1:" + server.getAddress().getPort()))
                             .setInitialSession(SessionState.createDefault())
                             .setQueryTimeoutSecs(30)
@@ -1339,7 +1339,7 @@ public class TestLakeSessionHandle {
                 new OkHttpClient.Builder()
                         .addInterceptor(userAgentInterceptor(DriverInfo.USER_AGENT_VALUE))
                         .build(),
-                SessionHandleConfig.builder()
+                SessionHandleConfig.builder().setPresignAllowPrivate(true)
                         .setBaseUri(baseUri)
                         .setInitialSession(SessionState.createDefault())
                         .setQueryTimeoutSecs(30)

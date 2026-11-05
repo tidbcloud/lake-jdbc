@@ -1,6 +1,12 @@
 package com.tidbcloud.jdbc.internal.http;
 
 import okhttp3.Headers;
+import okhttp3.Dns;
+import okhttp3.HttpUrl;
+import java.net.InetAddress;
+import java.net.Proxy;
+import java.net.UnknownHostException;
+import java.util.List;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
@@ -33,12 +39,27 @@ public class PresignClient {
     private static final int MaxRetryAttempts = 20;
     private static final int MAX_ERROR_BODY_LENGTH = 1024;
     private final OkHttpClient client;
+    private final boolean allowPrivate;
     private static final Logger logger = Logger.getLogger(PresignClient.class.getPackage().getName());
 
-    public PresignClient()
+    public PresignClient() { this(false); }
+
+    public PresignClient(boolean allowPrivate)
     {
+        this.allowPrivate = allowPrivate;
         Logger.getLogger(OkHttpClient.class.getName()).setLevel(Level.FINEST);
         this.client = new OkHttpClient.Builder()
+                .proxy(Proxy.NO_PROXY)
+                .followRedirects(false).followSslRedirects(false)
+                .dns(hostname -> {
+                    List<InetAddress> addresses = Dns.SYSTEM.lookup(hostname);
+                    if (!allowPrivate) {
+                        for (InetAddress address : addresses) {
+                            if (!publicAddress(address)) throw new UnknownHostException("Unsafe presigned storage address");
+                        }
+                    }
+                    return addresses;
+                })
                 .connectTimeout(600, TimeUnit.SECONDS)
                 .writeTimeout(900, TimeUnit.SECONDS)
                 .readTimeout(600, TimeUnit.SECONDS)
@@ -54,7 +75,7 @@ public class PresignClient {
     private void uploadFromStream(InputStream inputStream, Headers headers, String presignedUrl, long fileSize)
             throws IOException
     {
-        logger.fine("Starting upload: size=" + fileSize + " bytes, url=" + presignedUrl);
+        logger.fine("Starting presigned upload: size=" + fileSize + " bytes");
         long startTime = System.currentTimeMillis();
         try {
             Request r = putRequest(headers, presignedUrl, inputStream, fileSize);
@@ -81,7 +102,7 @@ public class PresignClient {
                 if (response.isSuccessful()) {
                     return response.body();
                 }
-                String responseBody = readErrorBody(response);
+                String responseBody = ""; // Never copy credential-bearing storage responses to diagnostics.
                 if (response.code() == 401) {
                     throw new NonRetryableHttpStatusException(
                             formatFailureMessage("Unauthorized user: " + response.code() + " " + response.message())
@@ -210,12 +231,49 @@ public class PresignClient {
         return responseBody.byteStream();
     }
 
-    private Request getRequest(Headers headers, String url)
+    static boolean publicAddress(InetAddress address) {
+        if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress() || address.isMulticastAddress()) return false;
+        byte[] b=address.getAddress();
+        int first=b[0] & 255, second=b[1] & 255;
+        if (b.length==4) {
+            int third=b[2] & 255;
+            return first != 0 && first < 224
+                    && !(first==100 && second>=64 && second<=127)
+                    && !(first==198 && (second==18 || second==19))
+                    && !(first==192 && second==0 && (third==0 || third==2))
+                    && !(first==192 && second==88 && third==99)
+                    && !(first==198 && second==51 && third==100)
+                    && !(first==203 && second==0 && third==113);
+        }
+        int segment=(first<<8)|second, next=((b[2]&255)<<8)|(b[3]&255);
+        return (segment & 0xe000)==0x2000 && segment!=0x2002
+                && !(segment==0x2001 && (next<0x200 || next==0xdb8))
+                && (segment & 0xfff0)!=0x3ff0;
+    }
+
+    private void validateUrl(String value) throws IOException {
+        HttpUrl url;
+        try { url=HttpUrl.get(value); } catch (IllegalArgumentException e) {
+            throw new NonRetryableHttpStatusException("Invalid presigned storage URL");
+        }
+        if ((!url.isHttps() && !allowPrivate) || !url.username().isEmpty() || !url.password().isEmpty()
+                || url.fragment()!=null) throw new NonRetryableHttpStatusException("Unsafe presigned storage URL");
+        if (!allowPrivate && (url.host().contains(":") || url.host().matches("[0-9.]+"))) {
+            if (!publicAddress(InetAddress.getByName(url.host()))) {
+                throw new NonRetryableHttpStatusException("Unsafe presigned storage address");
+            }
+        }
+    }
+
+    private Request getRequest(Headers headers, String url) throws IOException
     {
+        validateUrl(url);
         return new Request.Builder().headers(headers).url(url).get().build();
     }
 
-    private Request putRequest(Headers headers, String presignedUrl, InputStream inputStream, long fileSize) {
+    private Request putRequest(Headers headers, String presignedUrl, InputStream inputStream, long fileSize) throws IOException {
+        validateUrl(presignedUrl);
         RequestBody requestBody = new RequestBody() {
             @Override
             public MediaType contentType() {
