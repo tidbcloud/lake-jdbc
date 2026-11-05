@@ -19,9 +19,27 @@ public final class SqlText {
         if (value == null || value.isEmpty() || value.indexOf('\0') >= 0) {
             throw new SQLException("SQL identifier must be non-empty and contain no NUL");
         }
-        // The Lake lexer treats backslashes as escapes in double-quoted tokens.
-        // Backtick tokens keep them literal, including before an embedded quote.
-        String delimiter = value.indexOf('\\') >= 0 ? "`" : "\"";
+        // An odd backslash run can hide a double-quote delimiter from the
+        // lexer. Prefer ANSI quoting otherwise: older servers cannot parse
+        // doubled backticks even though current servers accept them.
+        int backslashes = 0;
+        boolean ansiSafe = true;
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch == '\\') {
+                backslashes++;
+            } else {
+                if (ch == '"' && backslashes % 2 != 0) {
+                    ansiSafe = false;
+                }
+                backslashes = 0;
+            }
+        }
+        ansiSafe &= backslashes % 2 == 0;
+        if (!ansiSafe && value.indexOf('`') >= 0) {
+            throw new SQLException("Identifier cannot be quoted safely across supported Lake server versions");
+        }
+        String delimiter = ansiSafe ? "\"" : "`";
         return delimiter + value.replace(delimiter, delimiter + delimiter) + delimiter;
     }
 

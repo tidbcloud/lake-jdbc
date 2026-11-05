@@ -36,7 +36,11 @@ public class TestControlSqlSecurity {
     @Test(groups = {"UNIT"})
     public void testIdentifiersAndQuotedLoadTargets() throws Exception {
         Assert.assertEquals(SqlText.quoteIdentifier("a\"b"), "\"a\"\"b\"");
-        Assert.assertEquals(SqlText.quoteIdentifier("a\\`\"b"), "`a\\``\"b`");
+        Assert.assertEquals(SqlText.quoteIdentifier("a\\`\"b"), "\"a\\`\"\"b\"");
+        Assert.assertEquals(SqlText.quoteIdentifier("a\\\"b"), "`a\\\"b`");
+        Assert.assertEquals(SqlText.quoteIdentifier("a\\"), "`a\\`");
+        Assert.assertEquals(SqlText.quoteIdentifier("a\\\\"), "\"a\\\\\"");
+        Assert.expectThrows(SQLException.class, () -> SqlText.quoteIdentifier("a`\\\"b"));
         Assert.expectThrows(SQLException.class, () -> SqlText.quoteIdentifier(null));
         Assert.expectThrows(SQLException.class, () -> SqlText.quoteIdentifier("bad\0name"));
     }
