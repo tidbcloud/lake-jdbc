@@ -364,3 +364,18 @@ port is given; the historical `sslmode=enable` implicit port 8000 is preserved.
 `ssl=true` also enables HTTPS. The existing default and `sslmode=disable` remain
 plain HTTP for compatibility with local deployments. Unknown legacy spellings
 retain their previous handling with a warning; use a supported mode explicitly.
+
+### Security defaults for the next release
+
+Unqualified JDBC endpoints now use verified HTTPS on port 443. Plaintext requires
+an explicit HTTP scheme, `ssl=false` or `sslmode=disable`; invalid TLS modes fail
+rather than downgrading. All TLS modes keep certificate and hostname verification.
+`copy_purge` defaults to false. Default connection/query/socket timeouts are
+60/3600/600 seconds; explicit timeout values remain available.
+
+Presigned storage requests require public HTTPS targets by default. Private,
+loopback, link-local, reserved and mixed public/private DNS answers are rejected
+at connection-time resolution, and redirects/proxies are disabled. Storage URLs
+and response bodies are omitted from diagnostics. For customer-controlled private
+storage (including local MinIO), explicitly set `presign_allow_private=true`;
+this also permits HTTP and must only be used for trusted storage endpoints.

@@ -520,7 +520,7 @@ public class TestPrepareStatement {
 
             Assert.assertFalse(stageAttachment.getFileFormatOptions().containsKey("binary_format"));
             Assert.assertTrue(stageAttachment.getFileFormatOptions().containsKey("type"));
-            Assert.assertEquals("true", stageAttachment.getCopyOptions().get("PURGE"));
+            Assert.assertEquals("false", stageAttachment.getCopyOptions().get("PURGE"));
             Assert.assertFalse(stageAttachment.getCopyOptions().containsKey("NULL_DISPLAY"));
         }
     }

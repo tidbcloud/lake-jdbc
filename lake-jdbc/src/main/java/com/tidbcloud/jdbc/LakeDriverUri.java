@@ -68,6 +68,7 @@ final class LakeDriverUri {
     private final String database;
     private final boolean presignedUrlDisabled;
     private final String presign;
+    private final boolean presignAllowPrivate;
     private final Integer connectionTimeout;
     private final Integer queryTimeout;
     private final Integer socketTimeout;
@@ -84,8 +85,17 @@ final class LakeDriverUri {
         Map.Entry<URI, Map<String, String>> uriAndProperties = parse(url);
         URI rawUri = uriAndProperties.getKey();
         this.properties = mergeProperties(rawUri, uriAndProperties.getValue(), driverProperties);
-        this.sslmode = SSL_MODE.getValue(properties).orElse("disable");
-        this.useSecureConnection = SSL.getValue(properties).orElse(false) || requiresTls(this.sslmode);
+        Map<String,String> selectors = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        selectors.putAll(parseParameters(rawUri.getQuery()));
+        if (driverProperties != null) selectors.putAll(Maps.fromProperties(driverProperties));
+        if (selectors.containsKey("sslmode") && !selectors.containsKey("ssl")) {
+            properties.setProperty("ssl", "false");
+        } else if (selectors.containsKey("ssl") && !selectors.containsKey("sslmode")) {
+            properties.setProperty("sslmode", SSL.getValue(properties).orElse(false) ? "require" : "disable");
+        }
+        this.sslmode = SSL_MODE.getValue(properties).orElse("require");
+        boolean modeRequiresTls = requiresTls(this.sslmode);
+        this.useSecureConnection = SSL.getValue(properties).orElse(false) || modeRequiresTls;
         this.useVerify = USE_VERIFY.getValue(properties).orElse(false);
         this.debug = DEBUG.getValue(properties).orElse(false);
         this.strNullAsNull = STRNULL_AS_NULL.getValue(properties).orElse(true);
@@ -98,7 +108,8 @@ final class LakeDriverUri {
         this.database = DATABASE.getValue(properties).orElse("default");
         this.presignedUrlDisabled = PRESIGNED_URL_DISABLED.getRequiredValue(properties);
         this.presign = PRESIGN.getValue(properties).orElse("");
-        this.copyPurge = COPY_PURGE.getValue(properties).orElse(true);
+        this.presignAllowPrivate = PRESIGN_ALLOW_PRIVATE.getRequiredValue(properties);
+        this.copyPurge = COPY_PURGE.getValue(properties).orElse(false);
         this.nullDisplay = NULL_DISPLAY.getValue(properties).orElse("\\N");
         this.binaryFormat = BINARY_FORMAT.getValue(properties).orElse("");
         this.queryResultFormat = QueryResultFormat.fromValue(QUERY_RESULT_FORMAT.getValue(properties).orElse("json"));
@@ -155,7 +166,7 @@ final class LakeDriverUri {
         uriProperties.put(DATABASE.getKey(), db);
     }
 
-    private static boolean requiresTls(String mode) {
+    private static boolean requiresTls(String mode) throws SQLException {
         switch (mode.toLowerCase(Locale.US)) {
             case "enable":
             case "require":
@@ -165,9 +176,7 @@ final class LakeDriverUri {
             case "disable":
                 return false;
             default:
-                // Retain legacy handling for unknown spellings, but make the ambiguity visible.
-                logger.warning("Unrecognized sslmode; use enable, require, verify-ca, verify-full or disable");
-                return false;
+                throw new SQLException("Unrecognized sslmode; use enable, require, verify-ca, verify-full or disable");
         }
     }
 
@@ -368,7 +377,7 @@ final class LakeDriverUri {
 
             if ("https".equals(uri.getScheme())) {
                 uriProperties.put(SSL.getKey(), "true");
-                uriProperties.put(SSL_MODE.getKey(), "enable");
+                uriProperties.put(SSL_MODE.getKey(), "require");
             } else {
                 uriProperties.put(SSL.getKey(), "false");
                 uriProperties.put(SSL_MODE.getKey(), "disable");
@@ -384,7 +393,7 @@ final class LakeDriverUri {
     private static URI parseSingleUri(String rawHost) throws URISyntaxException {
         String fullUri = (rawHost.startsWith("http://") || rawHost.startsWith("https://")) ?
                 rawHost :
-                "http://" + rawHost;
+                "https://" + rawHost;
         return new URI(fullUri);
     }
 
@@ -522,6 +531,7 @@ final class LakeDriverUri {
                 .setSettings(this.sessionSettings)
                 .build();
         return SessionHandleConfig.builder()
+                .setPresignAllowPrivate(this.presignAllowPrivate)
                 .setBaseUri(this.uri)
                 .setQueryTimeoutSecs(this.queryTimeout)
                 .setConnectionTimeoutSecs(this.connectionTimeout)

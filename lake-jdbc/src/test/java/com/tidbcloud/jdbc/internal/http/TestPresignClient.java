@@ -81,7 +81,7 @@ public class TestPresignClient {
 
         Path file = Files.createTempFile("lake-presign-", ".txt");
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
             client.presignDownload(file.toString(), emptyHeaders(), serverUrl(server, "/download"));
 
             Assert.assertEquals(new String(Files.readAllBytes(file), StandardCharsets.UTF_8), "hello");
@@ -116,7 +116,7 @@ public class TestPresignClient {
 
         Path file = Files.createTempFile("lake-presign-502-", ".txt");
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
             client.presignDownload(file.toString(), emptyHeaders(), serverUrl(server, "/download-502"));
 
             Assert.assertEquals(new String(Files.readAllBytes(file), StandardCharsets.UTF_8), "hello");
@@ -151,7 +151,7 @@ public class TestPresignClient {
 
         Path file = Files.createTempFile("lake-presign-504-", ".txt");
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
             client.presignDownload(file.toString(), emptyHeaders(), serverUrl(server, "/download-504"));
 
             Assert.assertEquals(new String(Files.readAllBytes(file), StandardCharsets.UTF_8), "hello");
@@ -179,7 +179,7 @@ public class TestPresignClient {
         server.start();
 
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
 
             IOException exception = Assert.expectThrows(IOException.class, () ->
                     client.presignDownloadStream(emptyHeaders(), serverUrl(server, "/download-stream")));
@@ -212,7 +212,7 @@ public class TestPresignClient {
         server.start();
 
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
 
             IOException exception = Assert.expectThrows(IOException.class, () ->
                     client.presignDownloadStream(emptyHeaders(), serverUrl(server, "/download-300")));
@@ -243,7 +243,7 @@ public class TestPresignClient {
         server.start();
 
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
 
             IOException exception = Assert.expectThrows(IOException.class, () -> client.presignUpload(
                     null,
@@ -279,7 +279,7 @@ public class TestPresignClient {
         server.start();
 
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
 
             IOException exception = Assert.expectThrows(IOException.class, () -> client.presignUpload(
                     null,
@@ -322,7 +322,7 @@ public class TestPresignClient {
         server.start();
 
         try {
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(true);
 
             IOException exception = Assert.expectThrows(IOException.class, () -> client.presignUpload(
                     null,

@@ -314,7 +314,7 @@ public class LakeSessionHandle implements Consumer<SessionState> {
             } catch (RuntimeException e) {
                 throw new SQLException("Failed to prepare presigned upload request", e);
             }
-            PresignClient client = new PresignClient();
+            PresignClient client = new PresignClient(config.isPresignAllowPrivate());
             try {
                 client.presignUpload(null, dataStream, presigned.headers, presigned.url, fileSize, true);
             } catch (RuntimeException | IOException e) {
@@ -359,7 +359,7 @@ public class LakeSessionHandle implements Consumer<SessionState> {
 
     public InputStream downloadStream(String stageName, String path) throws SQLException {
         String normalizedStage = stageName.replaceAll("/$", "");
-        PresignClient client = new PresignClient();
+        PresignClient client = new PresignClient(config.isPresignAllowPrivate());
         PresignedRequestContext presigned;
         try {
             presigned = getPresignedRequest(PresignMethod.DOWNLOAD, normalizedStage, path);

@@ -77,7 +77,7 @@ public class Utils {
         if (database != null && !database.isEmpty()) {
             url.append("/").append(database);
         }
-        return url.toString();
+        return url.append("?ssl=false&presign_allow_private=true").toString();
     }
 
     private static String replaceDatabase(String url, String database) {

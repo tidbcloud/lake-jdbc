@@ -68,9 +68,9 @@ public class TestLakeDriverUri {
     public void testDefaultSSL() throws SQLException {
         LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://localhost", null);
 
-        Assert.assertEquals(uri.getUri().getScheme(), "http");
+        Assert.assertEquals(uri.getUri().getScheme(), "https");
         Assert.assertEquals(uri.getUri().getHost(), "localhost");
-        Assert.assertEquals(uri.getUri().getPort(), 8000);
+        Assert.assertEquals(uri.getUri().getPort(), 443);
     }
 
     @Test(groups = {"UNIT"})
@@ -96,7 +96,7 @@ public class TestLakeDriverUri {
         OkHttpClient defaultClient = new OkHttpClient();
 
         OkHttpClient.Builder httpBuilder = defaultClient.newBuilder();
-        createDriverUri("jdbc:lake://localhost").setupClient(httpBuilder);
+        createDriverUri("jdbc:lake://localhost?ssl=false").setupClient(httpBuilder);
         OkHttpClient httpClient = httpBuilder.build();
 
         OkHttpClient.Builder firstHttpsBuilder = defaultClient.newBuilder();
@@ -123,7 +123,7 @@ public class TestLakeDriverUri {
     public void testSSLCustomPort() throws SQLException {
         LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://localhost:33101", null);
 
-        Assert.assertEquals(uri.getUri().getScheme(), "http");
+        Assert.assertEquals(uri.getUri().getScheme(), "https");
         Assert.assertEquals(uri.getUri().getHost(), "localhost");
         Assert.assertEquals(uri.getUri().getPort(), 33101);
     }
@@ -187,7 +187,7 @@ public class TestLakeDriverUri {
         Assert.assertEquals(uri.getMaxRowsInBuffer().intValue(), PaginationOptions.getDefaultMaxRowsInBuffer());
         Assert.assertEquals(uri.getMaxRowsPerPage().intValue(), PaginationOptions.getDefaultMaxRowsPerPage());
         Assert.assertFalse(uri.presignedUrlDisabled().booleanValue());
-        Assert.assertTrue(uri.copyPurge().booleanValue());
+        Assert.assertFalse(uri.copyPurge().booleanValue());
         Assert.assertEquals("\\N", uri.nullDisplay());
         Assert.assertEquals("base64", uri.binaryFormat());
         Assert.assertEquals("enable", uri.getSslmode());
@@ -215,7 +215,7 @@ public class TestLakeDriverUri {
         Assert.assertEquals(uri.getMaxRowsInBuffer().intValue(), 10);
         Assert.assertEquals(uri.getMaxRowsPerPage().intValue(), 5);
         Assert.assertTrue(uri.presignedUrlDisabled().booleanValue());
-        Assert.assertTrue(uri.copyPurge().booleanValue());
+        Assert.assertFalse(uri.copyPurge().booleanValue());
         Assert.assertEquals("", uri.binaryFormat().toString());
         assertPaginationConfig(uri.toSessionHandleConfig(), 1, 10, 5);
     }
