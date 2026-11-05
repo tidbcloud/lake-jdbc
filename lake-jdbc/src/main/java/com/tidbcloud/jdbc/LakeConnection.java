@@ -4,6 +4,7 @@ import com.tidbcloud.jdbc.annotation.NotImplemented;
 import com.tidbcloud.jdbc.exception.LakeFailedToPingException;
 import com.tidbcloud.jdbc.exception.LakeSQLException;
 import com.tidbcloud.jdbc.internal.QueryResultFormat;
+import com.tidbcloud.jdbc.internal.binding.SqlText;
 import com.tidbcloud.jdbc.internal.query.QueryResultPages;
 import com.tidbcloud.jdbc.internal.query.QueryResults;
 import com.tidbcloud.jdbc.internal.query.StageAttachment;
@@ -56,7 +57,10 @@ import static java.util.Objects.requireNonNull;
 public class LakeConnection implements Connection, LakeConnectionExtension {
 
     private static final Logger logger = Logger.getLogger(LakeConnection.class.getPackage().getName());
-    private static final Pattern STREAMING_LOAD_TARGET_PATTERN = Pattern.compile("(?is)^(\\s*insert\\s+into\\s+)([^\\s(]+)(.*)$");
+    private static final String SQL_IDENTIFIER = "(?:\"(?:[^\"\\\\]|\\\\.|\"\")*\"|`(?:[^`]|``)*`|"
+            + "[\\p{L}_][\\p{L}\\p{N}_$]*)";
+    private static final Pattern STREAMING_LOAD_TARGET_PATTERN = Pattern.compile(
+            "(?is)^(\\s*insert\\s+into\\s+)(" + SQL_IDENTIFIER + ")(\\s*\\.\\s*" + SQL_IDENTIFIER + ")?(.*)$");
 
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicBoolean autoCommit = new AtomicBoolean(true);
@@ -471,7 +475,7 @@ public class LakeConnection implements Connection, LakeConnectionExtension {
     public void setSchema(String schema)
             throws SQLException {
         checkOpen();
-        executeControlQuery("use " + schema);
+        executeControlQuery("use " + SqlText.quoteIdentifier(schema));
         refreshCurrentSchemaFromSession();
     }
 
@@ -576,6 +580,7 @@ public class LakeConnection implements Connection, LakeConnectionExtension {
 
     @Override
     public int loadStreamToTable(String sql, InputStream inputStream, long fileSize,  LoadMethod loadMethod) throws SQLException {
+        SqlText.requireSingleStatement(sql);
         if (!this.sessionHandle.supportsStreamingLoad()) {
             throw new SQLException("please upgrade Lake server to >1.2.781 to use loadStreamToTable, current version=" + this.sessionHandle.getServerVersion());
         }
@@ -599,6 +604,7 @@ public class LakeConnection implements Connection, LakeConnectionExtension {
     }
 
     private QueryResults executeControlQuery(String sql) throws SQLException {
+        SqlText.requireSingleStatement(sql);
         QueryResultPages queryPages = startQuery(sql, null, QueryResultFormat.JSON);
         try {
             QueryResults results = queryPages.getResults();
@@ -645,7 +651,7 @@ public class LakeConnection implements Connection, LakeConnectionExtension {
         this.schema.set(currentDatabase);
     }
 
-    private String qualifyStreamingLoadTarget(String sql) {
+    private String qualifyStreamingLoadTarget(String sql) throws SQLException {
         String currentSchema = schema.get();
         if (currentSchema == null || currentSchema.isEmpty()) {
             return sql;
@@ -655,9 +661,9 @@ public class LakeConnection implements Connection, LakeConnectionExtension {
             return sql;
         }
         String target = matcher.group(2);
-        if (target.indexOf('.') >= 0) {
+        if (matcher.group(3) != null) {
             return sql;
         }
-        return matcher.group(1) + currentSchema + "." + target + matcher.group(3);
+        return matcher.group(1) + SqlText.quoteIdentifier(currentSchema) + "." + target + matcher.group(4);
     }
 }

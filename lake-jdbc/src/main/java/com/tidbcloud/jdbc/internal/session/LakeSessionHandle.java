@@ -1,6 +1,7 @@
 package com.tidbcloud.jdbc.internal.session;
 
 import com.tidbcloud.jdbc.internal.QueryResultFormat;
+import com.tidbcloud.jdbc.internal.binding.SqlText;
 import com.tidbcloud.jdbc.internal.exception.LakePresignException;
 import com.tidbcloud.jdbc.internal.exception.LakeQueryException;
 import com.tidbcloud.jdbc.internal.exception.LakeSessionException;
@@ -284,9 +285,10 @@ public class LakeSessionHandle implements Consumer<SessionState> {
             String destFileName,
             long fileSize,
             boolean compressData) throws SQLException {
-        String normalizedStage = stageName == null ? "~" : stageName.replaceAll("/$", "");
-        String normalizedPrefix = destPrefix.replaceAll("^/", "").replaceAll("/$", "");
-        String destination = normalizedPrefix + "/" + destFileName;
+        String normalizedStage = StagePaths.stage(stageName);
+        String normalizedPrefix = StagePaths.path(destPrefix, true);
+        String normalizedFile = StagePaths.path(destFileName, false);
+        String destination = normalizedPrefix.isEmpty() ? normalizedFile : normalizedPrefix + "/" + normalizedFile;
 
         try {
             InputStream dataStream = inputStream;
@@ -304,7 +306,8 @@ public class LakeSessionHandle implements Consumer<SessionState> {
             }
 
             if (this.presignDisabled) {
-                uploadToStage(normalizedStage, normalizedPrefix + "/", destFileName, dataStream, fileSize);
+                uploadToStage(normalizedStage, normalizedPrefix.isEmpty() ? "" : normalizedPrefix + "/",
+                        normalizedFile, dataStream, fileSize);
                 return;
             }
 
@@ -358,11 +361,12 @@ public class LakeSessionHandle implements Consumer<SessionState> {
     }
 
     public InputStream downloadStream(String stageName, String path) throws SQLException {
-        String normalizedStage = stageName.replaceAll("/$", "");
+        String normalizedStage = StagePaths.stage(stageName);
+        String normalizedPath = StagePaths.path(path, false);
         PresignClient client = new PresignClient(config.isPresignAllowPrivate());
         PresignedRequestContext presigned;
         try {
-            presigned = getPresignedRequest(PresignMethod.DOWNLOAD, normalizedStage, path);
+            presigned = getPresignedRequest(PresignMethod.DOWNLOAD, normalizedStage, normalizedPath);
         } catch (RuntimeException e) {
             throw new SQLException("Failed to prepare presigned download request", e);
         }
@@ -735,17 +739,10 @@ public class LakeSessionHandle implements Consumer<SessionState> {
         return builder.build();
     }
 
-    private static String buildPresignSql(PresignMethod method, String stageName, String fileName) {
-        StringBuilder sql = new StringBuilder("PRESIGN ");
-        sql.append(method == PresignMethod.UPLOAD ? "UPLOAD" : "DOWNLOAD");
-        sql.append(" @");
-        if (stageName != null) {
-            sql.append(stageName).append("/");
-        } else {
-            sql.append("~/");
-        }
-        sql.append(fileName);
-        return sql.toString();
+    private static String buildPresignSql(PresignMethod method, String stageName, String fileName) throws SQLException {
+        String location = "@" + StagePaths.stage(stageName) + "/" + StagePaths.path(fileName, false);
+        return "PRESIGN " + (method == PresignMethod.UPLOAD ? "UPLOAD " : "DOWNLOAD ")
+                + SqlText.quoteString(location);
     }
 
     private static String uriRouteHint(String uri) {
