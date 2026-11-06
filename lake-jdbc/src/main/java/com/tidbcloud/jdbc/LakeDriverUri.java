@@ -86,7 +86,7 @@ final class LakeDriverUri {
         URI rawUri = uriAndProperties.getKey();
         this.properties = mergeProperties(rawUri, uriAndProperties.getValue(), driverProperties);
         Map<String,String> selectors = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        selectors.putAll(parseParameters(rawUri.getQuery()));
+        selectors.putAll(parseParameters(rawUri.getRawQuery()));
         if (driverProperties != null) selectors.putAll(Maps.fromProperties(driverProperties));
         if (selectors.containsKey("sslmode") && !selectors.containsKey("ssl")) {
             properties.setProperty("ssl", "false");
@@ -202,13 +202,13 @@ final class LakeDriverUri {
         // for exception text. Credentials must not survive into it: they have already been parsed
         // into the connection properties, and keeping them here replays ?password=... / ?accesstoken=...
         // on every request and exposes them to server access logs and host application logs.
-        String query = queryWithoutCredentials(uri.getQuery());
+        String query = queryWithoutCredentials(uri.getRawQuery());
         int finalPort = -1;
         try {
             HostAndPort hostAndPort = HostAndPort.fromString(authority);
             if (hostAndPort.hasPort()) {
                 finalPort = hostAndPort.getPort();
-                return new URI(scheme, null, uri.getHost(), finalPort, uri.getPath(), query, uri.getFragment());
+                return rebuildRawUri(uri, scheme, finalPort, query);
             }
         } catch (Exception e) {
             // ignore
@@ -218,10 +218,19 @@ final class LakeDriverUri {
         }
         try {
 
-            return new URI(scheme, null, uri.getHost(), finalPort, uri.getPath(), query, uri.getFragment());
+            return rebuildRawUri(uri, scheme, finalPort, query);
         } catch (URISyntaxException e) {
             throw new SQLException("Invalid URI: " + uri, e);
         }
+    }
+
+    private static URI rebuildRawUri(URI source, String scheme, int port, String rawQuery)
+            throws URISyntaxException {
+        String authority = new URI(scheme, null, source.getHost(), port, null, null, null).toASCIIString();
+        return new URI(authority
+                + (source.getRawPath() == null ? "" : source.getRawPath())
+                + (rawQuery == null ? "" : "?" + rawQuery)
+                + (source.getRawFragment() == null ? "" : "#" + source.getRawFragment()));
     }
 
     private static String queryWithoutCredentials(String query) {
@@ -232,7 +241,7 @@ final class LakeDriverUri {
         for (String queryArg : QUERY_SPLITTER.split(query)) {
             List<String> parts = ARG_SPLITTER.splitToList(queryArg);
             if (parts.isEmpty()
-                    || !CREDENTIAL_QUERY_PARAMETERS.contains(parts.get(0).toLowerCase(Locale.US))) {
+                    || !CREDENTIAL_QUERY_PARAMETERS.contains(decodeUserInfoComponent(parts.get(0)).toLowerCase(Locale.US))) {
                 kept.add(queryArg);
             }
         }
@@ -327,8 +336,7 @@ final class LakeDriverUri {
             properties.put(USER.getKey(), userInfo);
         }
         try {
-            return new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(),
-                    uri.getPath(), uri.getQuery(), uri.getFragment());
+            return rebuildRawUri(uri, uri.getScheme(), uri.getPort(), uri.getRawQuery());
         } catch (URISyntaxException e) {
             throw new SQLException("Invalid URI: " + uri, e);
         }
@@ -342,7 +350,7 @@ final class LakeDriverUri {
 
     private static Properties mergeProperties(URI uri, Map<String, String> uriProperties, Properties driverProperties) throws SQLException {
         Map<String, String> defaults = ConnectionProperties.getDefaults();
-        Map<String, String> urlProperties = parseParameters(uri.getQuery());
+        Map<String, String> urlProperties = parseParameters(uri.getRawQuery());
         Map<String, String> suppliedProperties = Maps.fromProperties(driverProperties);
         Properties result = new Properties();
         setProperties(result, defaults);
@@ -432,7 +440,10 @@ final class LakeDriverUri {
                 if (parts.size() != 2) {
                     throw new SQLException(format("Connection argument is not valid connection property: '%s'", queryArg));
                 }
-                if (result.put(parts.get(0), parts.get(1)) != null) {
+                // Split raw delimiters first; encoded ampersands remain value data.
+                String key = decodeUserInfoComponent(parts.get(0)).toLowerCase(Locale.US);
+                String value = decodeUserInfoComponent(parts.get(1));
+                if (result.put(key, value) != null) {
                     throw new SQLException(format("Connection property '%s' is in URL multiple times", parts.get(0)));
                 }
             }
@@ -554,8 +565,20 @@ final class LakeDriverUri {
     public void setupClient(OkHttpClient.Builder builder) throws SQLException {
         try {
             LakeSessionCookieJar cookieJar = new LakeSessionCookieJar();
-            cookieJar.add(new Cookie.Builder().name("cookie_enabled").value("true").domain("not_used").build());
+            cookieJar.add(new Cookie.Builder().name("cookie_enabled").value("true").hostOnlyDomain(uri.getHost()).path("/").build());
             builder.cookieJar(cookieJar);
+            // Keep same-origin redirects, but never send cookies, SQL or auth to
+            // a redirect-selected origin (including a TLS downgrade).
+            okhttp3.HttpUrl origin = okhttp3.HttpUrl.get(uri.toString());
+            builder.addNetworkInterceptor(chain -> {
+                okhttp3.HttpUrl target = chain.request().url();
+                if (!origin.scheme().equals(target.scheme())
+                        || !origin.host().equals(target.host())
+                        || origin.port() != target.port()) {
+                    throw new java.io.IOException("Lake request cannot leave its configured origin");
+                }
+                return chain.proceed(chain.request());
+            });
 
             String password = PASSWORD.getValue(properties).orElse("");
             builder.addInterceptor(basicAuthInterceptor(USER.getValue(properties).orElse(""), password));

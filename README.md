@@ -396,3 +396,17 @@ backslashes and control characters are rejected. Redundant slashes and `.` path
 segments are normalized; a null stage selects the user's `~` stage.
 Server permissions still determine which stages and databases a credential may
 access; these client APIs do not sandbox an overprivileged connection.
+
+### Connection URL and session boundaries
+
+URL query fields are split before percent decoding. Encoded `&` / `=` remain
+part of one value; decode occurs once and `+` remains a literal plus. Property
+names are case insensitive, including duplicate detection. This keeps encoded
+warehouse/tenant values from introducing TLS or storage-policy options.
+
+REST requests and redirects must keep the configured scheme, host and port.
+Same-origin redirects remain supported. A cross-origin redirect, including an
+HTTPS downgrade, fails before request headers or a SQL body are delivered to the
+redirect target. Session cookies respect domain, path, expiry and Secure, and
+same-name cookies for distinct paths remain separate. Use the stable warehouse
+endpoint or load balancer as the connection origin.
