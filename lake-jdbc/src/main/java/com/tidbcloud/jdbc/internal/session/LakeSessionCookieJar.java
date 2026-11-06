@@ -15,16 +15,26 @@ public class LakeSessionCookieJar implements CookieJar {
     @Override
     public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
         for (Cookie cookie : cookies) {
-            cookieStore.put(cookie.name(), cookie);
+            add(cookie);
         }
     }
 
     @Override
     public List<Cookie> loadForRequest(HttpUrl url) {
-        return new ArrayList<>(cookieStore.values());
+        List<Cookie> result = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        cookieStore.forEach((key, cookie) -> {
+            if (cookie.expiresAt() <= now) {
+                cookieStore.remove(key, cookie);
+            } else if (cookie.matches(url)) {
+                result.add(cookie);
+            }
+        });
+        result.sort((left, right) -> Integer.compare(right.path().length(), left.path().length()));
+        return result;
     }
 
     public void add(Cookie cookie) {
-        cookieStore.put(cookie.name(), cookie);
+        cookieStore.put(cookie.domain() + "\n" + cookie.path() + "\n" + cookie.name(), cookie);
     }
 }
