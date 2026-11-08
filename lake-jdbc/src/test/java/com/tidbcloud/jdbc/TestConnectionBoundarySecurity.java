@@ -14,8 +14,13 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.Properties;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -39,6 +44,44 @@ public class TestConnectionBoundarySecurity {
         Assert.assertNull(credentials.getUri().getRawQuery());
         Assert.expectThrows(SQLException.class, () -> LakeDriverUri.create("jdbc:lake://host?ssl=true&%73sl=false", null));
         Assert.expectThrows(SQLException.class, () -> LakeDriverUri.create("jdbc:lake://host?ssl=true&SSL=false", null));
+    }
+
+    @Test
+    public void propertyInfoOmitsSecretsButKeepsOtherValues() throws Exception {
+        try (NonRegisteringLakeDriver driver = new NonRegisteringLakeDriver()) {
+            Properties supplied = new Properties();
+            supplied.setProperty("PASSWORD", "property-password");
+            supplied.setProperty("ACCESSTOKEN", "property-token");
+
+            Map<String, DriverPropertyInfo> fromProperties = propertyInfo(
+                    driver, "jdbc:lake://localhost/default?warehouse=example", supplied);
+            Assert.assertNull(fromProperties.get("password").value);
+            Assert.assertNull(fromProperties.get("accesstoken").value);
+            Assert.assertEquals(fromProperties.get("warehouse").value, "example");
+            Assert.assertEquals(supplied.getProperty("PASSWORD"), "property-password");
+
+            Map<String, DriverPropertyInfo> fromUrl = propertyInfo(
+                    driver, "jdbc:lake://test-user:uri-password@localhost/default?accesstoken=uri-token", null);
+            Assert.assertNull(fromUrl.get("password").value);
+            Assert.assertNull(fromUrl.get("accesstoken").value);
+            Assert.assertEquals(fromUrl.get("user").value, "test-user");
+        }
+    }
+
+    @Test
+    public void invalidPropertyInfoUrlFailsWithoutEchoingCredentials() throws Exception {
+        try (NonRegisteringLakeDriver driver = new NonRegisteringLakeDriver()) {
+            SQLException failure = Assert.expectThrows(SQLException.class, () -> driver.getPropertyInfo(
+                    "jdbc:lake://localhost/default?accesstoken=dummy-token&malformed", null));
+            Assert.assertEquals(failure.getMessage(), "Invalid Lake JDBC URL or connection properties");
+            Assert.assertNull(failure.getCause());
+        }
+    }
+
+    private static Map<String, DriverPropertyInfo> propertyInfo(
+            NonRegisteringLakeDriver driver, String url, Properties supplied) throws SQLException {
+        return Arrays.stream(driver.getPropertyInfo(url, supplied))
+                .collect(Collectors.toMap(property -> property.name, Function.identity()));
     }
 
     @Test
