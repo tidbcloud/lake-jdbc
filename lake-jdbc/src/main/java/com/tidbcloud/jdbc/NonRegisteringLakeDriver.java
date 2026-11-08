@@ -17,14 +17,6 @@ import static com.tidbcloud.jdbc.DriverInfo.*;
 class NonRegisteringLakeDriver implements Driver, Closeable {
     private final OkHttpClient httpClient = newHttpClient();
 
-    private static Properties urlProperties(String url, Properties info) {
-        try {
-            return LakeDriverUri.create(url, info).getProperties();
-        } catch (SQLException e) {
-            return info;
-        }
-    }
-
     private static OkHttpClient newHttpClient() {
         OkHttpClient.Builder builder = new OkHttpClient.Builder()
                 .addInterceptor(userAgentInterceptor(USER_AGENT_VALUE));
@@ -73,11 +65,23 @@ class NonRegisteringLakeDriver implements Driver, Closeable {
     @Override
     public DriverPropertyInfo[] getPropertyInfo(String url, Properties info)
             throws SQLException {
-        Properties properties = urlProperties(url, info);
+        final Properties properties;
+        try {
+            properties = LakeDriverUri.create(url, info).getProperties();
+        } catch (SQLException e) {
+            // Parse diagnostics can contain the supplied URL and credentials.
+            throw new SQLException("Invalid Lake JDBC URL or connection properties", e.getSQLState(), e.getErrorCode());
+        }
 
         return ConnectionProperties.allProperties().stream()
                 .filter(property -> property.isAllowed(properties))
-                .map(property -> property.getDriverPropertyInfo(properties))
+                .map(property -> {
+                    DriverPropertyInfo metadata = property.getDriverPropertyInfo(properties);
+                    if (property == ConnectionProperties.PASSWORD || property == ConnectionProperties.ACCESS_TOKEN) {
+                        metadata.value = null;
+                    }
+                    return metadata;
+                })
                 .toArray(DriverPropertyInfo[]::new);
     }
 
