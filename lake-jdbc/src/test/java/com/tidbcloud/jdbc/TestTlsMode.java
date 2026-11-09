@@ -1,14 +1,27 @@
 package com.tidbcloud.jdbc;
 
+import okhttp3.ConnectionSpec;
 import okhttp3.OkHttpClient;
+import okhttp3.TlsVersion;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.Properties;
 
 @Test(timeOut = 10000)
 public class TestTlsMode {
+    @Test(groups = {"UNIT"})
+    public void testTlsFallbackPreservesMinimumProtocol() throws SQLException {
+        LakeDriverUri uri = LakeDriverUri.create("jdbc:lake://host/default?sslmode=require", null);
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+        uri.setupClient(builder);
+        for (ConnectionSpec spec : builder.build().connectionSpecs()) {
+            Assert.assertEquals(spec.tlsVersions(), Arrays.asList(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2));
+        }
+    }
+
     @Test(groups = {"UNIT"})
     public void testExplicitTlsModesCannotDowngradeToHttp() throws SQLException {
         OkHttpClient defaultClient = new OkHttpClient();

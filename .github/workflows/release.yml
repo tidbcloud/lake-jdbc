@@ -4,19 +4,74 @@ on:
   workflow_dispatch:
     inputs:
       release_ref:
-        description: 'Optional existing release tag or commit to publish'
+        description: 'Optional version tag or full reviewed commit SHA'
         required: false
         type: string
 
+permissions:
+  contents: read
+
 jobs:
+  validate-and-test:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Check out protected main history
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and validate release source
+        id: source
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_REF" in
+            ''|main|refs/heads/main) requested="$GITHUB_SHA" ;;
+            refs/tags/*) requested="$RELEASE_REF" ;;
+            v*) requested="refs/tags/$RELEASE_REF" ;;
+            *) requested="$RELEASE_REF" ;;
+          esac
+          if [[ ! "$requested" =~ ^[0-9a-fA-F]{40}$ && ! "$requested" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Select a version tag or a full commit SHA." >&2
+            exit 1
+          fi
+          sha=$(git rev-parse --verify "$requested^{commit}")
+          # 0.4.10 was published from the previous upstream history. Pin its
+          # exact existing release commit so a repoint of the tag grants no access.
+          if ! git merge-base --is-ancestor "$sha" origin/main &&
+             [[ "$sha" != "6a77a359ce94ad4b1dac7deb30ba3f02070af1bf" ]]; then
+            echo "Release commit must be reachable from protected main." >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$sha"
+
+      - name: Set up JDK for tests
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Test the selected release source without publishing credentials
+        run: mvn --batch-mode --no-transfer-progress test -Dgroups=UNIT -DexcludedGroups=FLAKY
+
   build-and-release:
+    needs: validate-and-test
     runs-on: ubuntu-latest
     environment: maven-central-com-tidbcloud-release
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_ref || github.ref }}
+          ref: ${{ needs.validate-and-test.outputs.source_sha }}
+          persist-credentials: false
 
       - name: Pin Maven for reproducible Central staging
         shell: bash

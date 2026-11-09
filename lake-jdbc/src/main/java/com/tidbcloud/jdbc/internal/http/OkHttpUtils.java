@@ -58,7 +58,9 @@ public final class OkHttpUtils {
                 new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
                         .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
                         .build(),
-                ConnectionSpec.COMPATIBLE_TLS));
+                new ConnectionSpec.Builder(ConnectionSpec.COMPATIBLE_TLS)
+                        .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
+                        .build()));
     }
 
     private static final class SslConfig {
